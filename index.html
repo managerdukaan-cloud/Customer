@@ -2719,15 +2719,29 @@ function loadShopConfig() {
         }
 
         function updateQRCode() {
-            if (SHOP_CONFIG && SHOP_CONFIG.upiId) {
-                document.getElementById('dynamicUpiId').textContent = SHOP_CONFIG.upiId;
-                const qrImage = document.getElementById('dynamicQRCode');
-                if (qrImage) {
-                    const amount = document.getElementById('qrAmount').textContent.replace('₹', '');
-                    qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${SHOP_CONFIG.upiId}&pn=Raashanmart&am=${amount}&tn=Order%20Payment`;
-                }
-            }
-        }
+    if (!SHOP_CONFIG) return;
+
+    if (SHOP_CONFIG.upiId) {
+        document.getElementById('dynamicUpiId').textContent = SHOP_CONFIG.upiId;
+    }
+
+    const qrImage = document.getElementById('dynamicQRCode');
+    if (!qrImage) return;
+
+    // ✅ PRIORITY: Uploaded QR from shopkeeper
+    if (SHOP_CONFIG.qrCodeImage) {
+        qrImage.src = SHOP_CONFIG.qrCodeImage;
+        return;
+    }
+
+    // 🔁 Fallback: Dynamic UPI QR
+    if (SHOP_CONFIG.upiId) {
+        const amount = document.getElementById('qrAmount').textContent.replace('₹', '');
+        qrImage.src =
+            `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=` +
+            `upi://pay?pa=${SHOP_CONFIG.upiId}&pn=Raashanmart&am=${amount}&tn=Order%20Payment`;
+    }
+}
 
         const AVAILABLE_COUPONS = [
             { code: "WELCOME10", type: "percentage", value: 10, minOrder: 500, description: "Get 10% OFF on orders above ₹500" },
@@ -3472,16 +3486,6 @@ async function loadOrderHistory() {
             
             if (orderTotal) orderTotal.textContent = `₹${Math.max(0, total)}`;
             if (qrAmount) qrAmount.textContent = `₹${Math.max(0, total)}`;
-            
-            // Update QR code
-            if (SHOP_CONFIG && SHOP_CONFIG.upiId) {
-                const qrImage = document.getElementById('dynamicQRCode');
-                if (qrImage) {
-                qrImage.src = SHOP_CONFIG.qrCodeImage
-                    ? SHOP_CONFIG.qrCodeImage
-                    : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${SHOP_CONFIG.upiId}&pn=Raashanmart&am=${total}&tn=Order%20Payment`;
-                }
-            }
             
             const placeOrderBtn = document.getElementById('placeOrderBtn');
             if (placeOrderBtn) {
