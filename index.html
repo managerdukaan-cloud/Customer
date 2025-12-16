@@ -2654,20 +2654,24 @@ function loadShopConfig() {
             .collection('shop_config')
             .doc('settings')
             .onSnapshot(doc => {
-                if (doc.exists) {
-                    SHOP_CONFIG = doc.data();
-                    console.log('Shop config updated:', SHOP_CONFIG);
 
-                    // ✅ update only when UPI exists
-                        updateQRCode();
-                    }
-                    updateCouponSection();
+                if (!doc.exists) {
+                    console.warn('shop_config/settings not found');
+                    return; // ❌ default overwrite hata diya
+                }
 
-                } else {
-    console.warn('shop_config/settings not found');
-    return; // ❌ default overwrite hata diya
-}
+                // ✅ merge config (important for qrCodeImage)
+                SHOP_CONFIG = {
+                    ...SHOP_CONFIG,
+                    ...doc.data()
+                };
 
+                console.log('Shop config updated:', SHOP_CONFIG);
+
+                // ✅ always update QR (UPI ya QR image dono cases)
+                updateQRCode();
+                updateCouponSection();
+            });
 
     } catch (error) {
         console.error('Error loading shop config:', error);
