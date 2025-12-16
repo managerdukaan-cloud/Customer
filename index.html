@@ -2642,20 +2642,28 @@
         let SHOP_COUPONS = [];
         let SHOP_DATA = null; // Store shop data for coupon validation
 
-        // Load shop configuration from Firebase
-        async function loadShopConfig() {
-            try {
-                const configDoc = await db.collection('shop_config').doc('settings').get();
-                if (configDoc.exists) {
-                    SHOP_CONFIG = configDoc.data();
-                    console.log('Shop config loaded:', SHOP_CONFIG);
-                    
-                    // Update QR code UPI ID if available
-                    updateQRCode();
-                    
-                    // Load shop coupons
-                    await loadShopCoupons();
-                    
+        let shopConfigUnsubscribe = null;
+
+// Load shop configuration from Firebase (REAL-TIME + NO STALE DATA)
+function loadShopConfig() {
+    try {
+        // ❌ prevent multiple listeners
+        if (shopConfigUnsubscribe) return;
+
+        shopConfigUnsubscribe = db
+            .collection('shop_config')
+            .doc('settings')
+            .onSnapshot(doc => {
+                if (doc.exists) {
+                    SHOP_CONFIG = doc.data();
+                    console.log('Shop config updated:', SHOP_CONFIG);
+
+                    // ✅ update only when UPI exists
+                    if (SHOP_CONFIG.upiId) {
+                        updateQRCode();
+                    }
+                    updateCouponSection();
+
                 } else {
                     SHOP_CONFIG = {
                         upiId: 'shopkeeper@upi',
@@ -2664,17 +2672,12 @@
                         deliveryCharge: 0
                     };
                 }
-            } catch (error) {
-                console.error('Error loading shop config:', error);
-                SHOP_CONFIG = {
-                    upiId: 'shopkeeper@upi',
-                    couponsEnabled: false,
-                    multipleShopsAllowed: false,
-                    deliveryCharge: 0
-                };
-            }
-        }
+            });
 
+    } catch (error) {
+        console.error('Error loading shop config:', error);
+    }
+}
         // Load shop data including coupon settings
         async function loadShopData() {
             try {
@@ -3136,27 +3139,28 @@ async function loadOrderHistory() {
         }
         
         function handleOnlineStatus() {
-            isOnline = true;
-            console.log('✅ Internet connection restored');
-            document.getElementById('offlineNotification').style.display = 'none';
-            document.getElementById('offlineOverlay').style.display = 'none';
-            
-            const onlineNotification = document.getElementById('onlineNotification');
-            onlineNotification.style.display = 'block';
-            onlineNotification.innerHTML = '<i class="fas fa-wifi"></i> You are back online';
-            
-            setTimeout(() => {
-                onlineNotification.style.display = 'none';
-            }, 3000);
-            
-            if (currentUser) {
-                loadProductsFromFirebase();
-                loadOrderHistory();
-                startRealTimeOrderListener();
-                loadShopConfig();
-                loadShopData();
-            }
-        }
+    if (isOnline) return; // ✅ prevent multiple re-triggers
+    isOnline = true;
+
+    console.log('✅ Internet connection restored');
+    document.getElementById('offlineNotification').style.display = 'none';
+    document.getElementById('offlineOverlay').style.display = 'none';
+
+    const onlineNotification = document.getElementById('onlineNotification');
+    onlineNotification.style.display = 'block';
+    onlineNotification.innerHTML = '<i class="fas fa-wifi"></i> You are back online';
+
+    setTimeout(() => {
+        onlineNotification.style.display = 'none';
+    }, 3000);
+
+    if (currentUser) {
+        loadProductsFromFirebase();
+        loadOrderHistory();
+        startRealTimeOrderListener();
+        loadShopData(); // ✅ shopConfig intentionally NOT called
+    }
+}
         
         function handleOfflineStatus() {
             isOnline = false;
