@@ -2941,10 +2941,10 @@ async function loadOrderHistory() {
     try {
         console.log("🔄 Loading order history");
 
+        // ❌ orderBy REMOVED to include old orders
         const snapshot = await db
             .collection('orders')
             .where('customerId', '==', currentUser.uid)
-            .orderBy('createdAt', 'desc') // ✅ FIRESTORE LEVEL SORT
             .get();
 
         orders = [];
@@ -2953,15 +2953,19 @@ async function loadOrderHistory() {
             const firebaseOrder = doc.data();
             const orderIdToUse = firebaseOrder.orderId || doc.id;
 
-            const createdDate = firebaseOrder.createdAt
-                ? firebaseOrder.createdAt.toDate()
-                : new Date();
+            // ✅ SAFE DATE FALLBACK
+            let createdDate;
+            if (firebaseOrder.createdAt && firebaseOrder.createdAt.toDate) {
+                createdDate = firebaseOrder.createdAt.toDate();
+            } else {
+                createdDate = new Date(0); // VERY OLD DATE
+            }
 
             const mappedOrder = {
                 id: orderIdToUse,
                 orderId: orderIdToUse,
                 date: createdDate.toISOString(),
-                createdAt: createdDate.getTime(), // ✅ numeric for safety
+                createdAt: createdDate.getTime(),
                 items: firebaseOrder.items || [],
                 address: firebaseOrder.address || {},
                 phone: firebaseOrder.phone || '',
@@ -2980,7 +2984,7 @@ async function loadOrderHistory() {
             orders.push(mappedOrder);
         });
 
-        // 🔒 Extra safety sort (UI level)
+        // 🔥 SORT IN JS (NEW FIRST, OLD LAST)
         orders.sort((a, b) => b.createdAt - a.createdAt);
 
         localStorage.setItem('dukaan_orders', JSON.stringify(orders));
@@ -2997,26 +3001,25 @@ async function loadOrderHistory() {
     }
 }
 
-
-        // Real-time order listener
-function startRealTimeOrderListener() {
+        function startRealTimeOrderListener() {
     if (!currentUser) return;
 
     console.log("🔔 Starting real-time order listener");
 
     db.collection('orders')
         .where('customerId', '==', currentUser.uid)
-        .orderBy('createdAt', 'desc') // ✅ SAME ORDERING
         .onSnapshot(snapshot => {
-            console.log("🔄 Real-time order update received");
 
             snapshot.docChanges().forEach(change => {
                 const data = change.doc.data();
                 const orderIdToUse = data.orderId || change.doc.id;
 
-                const createdDate = data.createdAt
-                    ? data.createdAt.toDate()
-                    : new Date();
+                let createdDate;
+                if (data.createdAt && data.createdAt.toDate) {
+                    createdDate = data.createdAt.toDate();
+                } else {
+                    createdDate = new Date(0);
+                }
 
                 const updatedOrder = {
                     id: orderIdToUse,
@@ -3026,23 +3029,15 @@ function startRealTimeOrderListener() {
                     ...data
                 };
 
-                console.log("📝 Order update:", change.type, orderIdToUse);
-
                 if (change.type === 'added' || change.type === 'modified') {
                     handleOrderUpdate(updatedOrder);
                 }
             });
 
-            // 🔒 Ensure order always correct after realtime updates
             orders.sort((a, b) => b.createdAt - a.createdAt);
             renderOrders();
-
-        }, error => {
-            console.error("❌ Error in real-time order listener:", error);
         });
 }
-
-
         // Handle order update
         function handleOrderUpdate(updatedOrder) {
             const orderIndex = orders.findIndex(order => order.id === updatedOrder.id);
