@@ -2935,84 +2935,113 @@
         }
 
         // Load order history
-        async function loadOrderHistory() {
-            if (!currentUser || !isOnline) return;
-            
-            try {
-                console.log("🔄 Loading order history");
-                const snapshot = await db.collection('orders')
-                    .where('customerId', '==', currentUser.uid)
-                    .get();
-                
-                orders = [];
-                snapshot.forEach(doc => {
-                    const firebaseOrder = doc.data();
-                    const orderIdToUse = firebaseOrder.orderId || doc.id;
-                    
-                    const mappedOrder = {
-                        id: orderIdToUse,
-                        orderId: orderIdToUse,
-                        date: firebaseOrder.createdAt ? firebaseOrder.createdAt.toDate().toISOString() : new Date().toISOString(),
-                        items: firebaseOrder.items || [],
-                        address: firebaseOrder.address || {},
-                        phone: firebaseOrder.phone || '',
-                        paymentMethod: firebaseOrder.paymentMethod || 'cod',
-                        status: firebaseOrder.status || 'confirmed',
-                        subtotal: firebaseOrder.subtotal || firebaseOrder.total || 0,
-                        discount: firebaseOrder.discount || 0,
-                        total: firebaseOrder.total || 0,
-                        tracking: firebaseOrder.tracking || {
-                            confirmed: firebaseOrder.createdAt ? firebaseOrder.createdAt.toDate().toISOString() : new Date().toISOString()
-                        },
-                        refundStatus: firebaseOrder.refundStatus || null,
-                        refundAmount: firebaseOrder.refundAmount || 0
-                    };
-                    
-                    orders.push(mappedOrder);
-                });
-                
-                orders.sort((a, b) => new Date(b.date) - new Date(a.date));
-                localStorage.setItem('dukaan_orders', JSON.stringify(orders));
-                renderOrders();
-                
-            } catch (error) {
-                console.error('Error loading order history:', error);
-                const savedOrders = localStorage.getItem('dukaan_orders');
-                if (savedOrders) {
-                    orders = JSON.parse(savedOrders);
-                    renderOrders();
-                }
-            }
+async function loadOrderHistory() {
+    if (!currentUser || !isOnline) return;
+
+    try {
+        console.log("🔄 Loading order history");
+
+        const snapshot = await db
+            .collection('orders')
+            .where('customerId', '==', currentUser.uid)
+            .orderBy('createdAt', 'desc') // ✅ FIRESTORE LEVEL SORT
+            .get();
+
+        orders = [];
+
+        snapshot.forEach(doc => {
+            const firebaseOrder = doc.data();
+            const orderIdToUse = firebaseOrder.orderId || doc.id;
+
+            const createdDate = firebaseOrder.createdAt
+                ? firebaseOrder.createdAt.toDate()
+                : new Date();
+
+            const mappedOrder = {
+                id: orderIdToUse,
+                orderId: orderIdToUse,
+                date: createdDate.toISOString(),
+                createdAt: createdDate.getTime(), // ✅ numeric for safety
+                items: firebaseOrder.items || [],
+                address: firebaseOrder.address || {},
+                phone: firebaseOrder.phone || '',
+                paymentMethod: firebaseOrder.paymentMethod || 'cod',
+                status: firebaseOrder.status || 'confirmed',
+                subtotal: firebaseOrder.subtotal || firebaseOrder.total || 0,
+                discount: firebaseOrder.discount || 0,
+                total: firebaseOrder.total || 0,
+                tracking: firebaseOrder.tracking || {
+                    confirmed: createdDate.toISOString()
+                },
+                refundStatus: firebaseOrder.refundStatus || null,
+                refundAmount: firebaseOrder.refundAmount || 0
+            };
+
+            orders.push(mappedOrder);
+        });
+
+        // 🔒 Extra safety sort (UI level)
+        orders.sort((a, b) => b.createdAt - a.createdAt);
+
+        localStorage.setItem('dukaan_orders', JSON.stringify(orders));
+        renderOrders();
+
+    } catch (error) {
+        console.error('❌ Error loading order history:', error);
+
+        const savedOrders = localStorage.getItem('dukaan_orders');
+        if (savedOrders) {
+            orders = JSON.parse(savedOrders);
+            renderOrders();
         }
+    }
+}
+
 
         // Real-time order listener
-        function startRealTimeOrderListener() {
-            if (!currentUser) return;
-            
-            console.log("🔔 Starting real-time order listener");
-            db.collection('orders')
-                .where('customerId', '==', currentUser.uid)
-                .onSnapshot((snapshot) => {
-                    console.log("🔄 Real-time order update received");
-                    
-                    snapshot.docChanges().forEach((change) => {
-                        const updatedOrder = { 
-                            id: change.doc.id, 
-                            ...change.doc.data() 
-                        };
-                        
-                        const orderIdToUse = updatedOrder.orderId || change.doc.id;
-                        console.log("📝 Order update:", change.type, "Order ID:", orderIdToUse);
-                        
-                        if (change.type === 'added' || change.type === 'modified') {
-                            handleOrderUpdate({...updatedOrder, id: orderIdToUse});
-                        }
-                    });
-                    
-                }, (error) => {
-                    console.error("❌ Error in real-time order listener:", error);
-                });
-        }
+function startRealTimeOrderListener() {
+    if (!currentUser) return;
+
+    console.log("🔔 Starting real-time order listener");
+
+    db.collection('orders')
+        .where('customerId', '==', currentUser.uid)
+        .orderBy('createdAt', 'desc') // ✅ SAME ORDERING
+        .onSnapshot(snapshot => {
+            console.log("🔄 Real-time order update received");
+
+            snapshot.docChanges().forEach(change => {
+                const data = change.doc.data();
+                const orderIdToUse = data.orderId || change.doc.id;
+
+                const createdDate = data.createdAt
+                    ? data.createdAt.toDate()
+                    : new Date();
+
+                const updatedOrder = {
+                    id: orderIdToUse,
+                    orderId: orderIdToUse,
+                    date: createdDate.toISOString(),
+                    createdAt: createdDate.getTime(),
+                    ...data
+                };
+
+                console.log("📝 Order update:", change.type, orderIdToUse);
+
+                if (change.type === 'added' || change.type === 'modified') {
+                    handleOrderUpdate(updatedOrder);
+                }
+            });
+
+            // 🔒 Ensure order always correct after realtime updates
+            orders.sort((a, b) => b.createdAt - a.createdAt);
+            renderOrders();
+
+        }, error => {
+            console.error("❌ Error in real-time order listener:", error);
+        });
+}
+
 
         // Handle order update
         function handleOrderUpdate(updatedOrder) {
