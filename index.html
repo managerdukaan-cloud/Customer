@@ -2657,7 +2657,10 @@
 
         let shopConfigUnsubscribe = null;
 
-// Load shop configuration from Firebase (REAL-TIME + NO STALE DATA)
+// ==================== SHOP CONFIG LISTENER ====================
+let shopConfigUnsubscribe = null; // ADD THIS LINE
+
+        // Load shop configuration from Firebase (REAL-TIME + NO STALE DATA)
 function loadShopConfig() {
     try {
         // ❌ prevent multiple listeners
