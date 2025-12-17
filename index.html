@@ -2660,67 +2660,71 @@
         let currentShopId = null;
 
         function loadAndListenToShop() {
-            // Unsubscribe previous listener if any
-            if (currentShopListener) {
-                currentShopListener();
-                currentShopListener = null;
-                console.log("🔄 Unsubscribed previous shop listener");
-            }
+    // Unsubscribe previous listener if any
+    if (currentShopListener) {
+        currentShopListener();
+        currentShopListener = null;
+        console.log("🔄 Unsubscribed previous shop listener");
+    }
 
-            // Get shop ID from cart
-            if (!cart || cart.length === 0) {
-                console.log("🛒 Cart is empty, no shop to listen to");
-                currentShopId = null;
-                return;
-            }
+    // Get shop ID from cart
+    if (!cart || cart.length === 0) {
+        console.log("🛒 Cart is empty, no shop to listen to");
+        currentShopId = null;
+        return;
+    }
 
-            const shopIdFromCart = cart[0].shopId;
-            if (!shopIdFromCart) {
-                console.error("❌ No shopId found in cart items");
-                return;
-            }
+    const shopIdFromCart = cart[0].shopId;
+    if (!shopIdFromCart) {
+        console.error("❌ No shopId found in cart items");
+        return;
+    }
 
-            // If already listening to same shop, do nothing
-            if (currentShopId === shopIdFromCart) {
-                console.log("✅ Already listening to shop:", shopIdFromCart);
-                return;
-            }
+    // If already listening to same shop, do nothing
+    if (currentShopId === shopIdFromCart) {
+        console.log("✅ Already listening to shop:", shopIdFromCart);
+        return;
+    }
 
-            currentShopId = shopIdFromCart;
-            console.log("🎯 Setting up listener for shop:", shopIdFromCart);
+    currentShopId = shopIdFromCart;
+    console.log("🎯 Setting up listener for shop:", shopIdFromCart);
 
-            // Listen to shop-specific config (FIXED: shop_config/{shopId} instead of shop_config/settings)
-            const shopConfigRef = db.collection('shop_config').doc(shopIdFromCart);
+    // Listen to shop-specific config (FIXED: shop_config/{shopId} instead of shop_config/settings)
+    const shopConfigRef = db.collection('shop_config').doc(shopIdFromCart);
+    
+    currentShopListener = shopConfigRef.onSnapshot(
+        (doc) => {
+            console.log("📡 Real-time shop config update received for:", shopIdFromCart);
             
-            currentShopListener = shopConfigRef.onSnapshot(
-                (doc) => {
-                    console.log("📡 Real-time shop config update received for:", shopIdFromCart);
-                    
-                    if (doc.exists) {
-                        const shopData = doc.data();
-                        SHOP_CONFIG = shopData;
-                        console.log("✅ Shop config loaded:", shopData);
-                        
-                        // Update UI with shop data
-                        updatePaymentSectionUI(shopData);
-                    } else {
-                        console.log("⚠️ No config found for shop:", shopIdFromCart);
-                        SHOP_CONFIG = null;
-                        
-                        // Fallback: Try to get from shops collection
-                        loadShopDataForPayment(shopIdFromCart);
-                    }
-                },
-                (error) => {
-                    console.error("❌ Error listening to shop config:", error);
-                    SHOP_CONFIG = null;
+            if (doc.exists) {
+                const shopData = doc.data();
+                console.log("📡 REAL-TIME SHOP DATA:", shopData);
+                console.log("🔍 All fields:", Object.keys(shopData));
+                
+                if (shopData.upiSettings) {
+                    console.log("🔍 upiSettings:", shopData.upiSettings);
                 }
-            );
-
-            // Also load shop data for coupons and other info
-            loadShopData();
+                
+                SHOP_CONFIG = shopData;
+                updatePaymentSectionUI(shopData);
+                loadShopData();
+            } else {
+                console.log("⚠️ No config found for shop:", shopIdFromCart);
+                SHOP_CONFIG = null;
+                
+                // Fallback: Try to get from shops collection
+                loadShopDataForPayment(shopIdFromCart);
+            }
+        },
+        (error) => {
+            console.error("❌ Error listening to shop config:", error);
+            SHOP_CONFIG = null;
         }
+    );
 
+    // Also load shop data for coupons and other info
+    loadShopData();
+}
         // Fallback function to get payment methods from shops collection
         async function loadShopDataForPayment(shopId) {
             try {
@@ -3192,6 +3196,27 @@ if (doc.exists) {
                 SHOP_COUPONS = [];
             }
         }
+
+        // ==================== FORCE UI REFRESH ====================
+function forceRefreshPaymentUI() {
+    console.log("🔄 Force refreshing payment UI");
+    
+    if (SHOP_CONFIG) {
+        updatePaymentSectionUI(SHOP_CONFIG);
+    } else if (currentShopId) {
+        db.collection('shop_config').doc(currentShopId).get()
+            .then(doc => {
+                if (doc.exists) {
+                    SHOP_CONFIG = doc.data();
+                    updatePaymentSectionUI(SHOP_CONFIG);
+                    console.log("✅ Shop config reloaded");
+                }
+            })
+            .catch(error => {
+                console.error("❌ Error reloading shop config:", error);
+            });
+    }
+}
 
         const AVAILABLE_COUPONS = [
             { code: "WELCOME10", type: "percentage", value: 10, minOrder: 500, description: "Get 10% OFF on orders above ₹500" },
