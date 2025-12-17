@@ -3402,9 +3402,18 @@ let currentShopData = null; // Global variable to store shop info
 
 // Function to load and listen for shop updates (Call this on page load)
 async function loadAndListenToShop() {
-    // IMPORTANT: Get the current shop ID. You need to set this from your app's logic.
-    // For example, if user selects a shop or there's only one shop:
-    const shopId = 'YOUR_CURRENT_SHOP_ID_HERE'; // REPLACE THIS WITH ACTUAL SHOP ID LOGIC
+    // Get shop ID from cart only
+    let shopId = null;
+    
+    // Check cart for shop ID
+    if (cart && cart.length > 0) {
+        shopId = cart[0].shopId;
+        console.log("Shop ID from cart:", shopId);
+    } 
+    else {
+        console.warn("Cart is empty. Will try again when items are added.");
+        return;
+    }
 
     if (!shopId) {
         console.error("Shop ID not found. Cannot load shop data.");
@@ -3428,7 +3437,6 @@ async function loadAndListenToShop() {
         console.error("Error listening to shop updates:", error);
     });
 }
-
         // Update cart UI
         function updateCartUI() {
             const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
