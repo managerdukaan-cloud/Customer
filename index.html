@@ -2745,144 +2745,318 @@
         }
 
         // ==================== FIXED: UPDATE PAYMENT UI ====================
-        function updatePaymentSectionUI(shopData) {
-            console.log("🔄 Updating payment UI with:", shopData);
-            
-            if (!shopData) {
-                console.log("❌ No shop data to update UI");
-                hideUPIOptions();
-                return;
-            }
-            
-            // 1. Get UPI ID from multiple possible locations
-            const upiId = shopData.upiId || 
-                         (shopData.upiSettings && shopData.upiSettings.upiId);
-            
-            // 2. Get QR Code URL from multiple possible locations
-            let qrCodeUrl = '';
-            
-            // Priority 1: Direct Cloudinary QR image (from shop_config)
-            if (shopData.qrCodeImage && shopData.qrCodeImage.includes('cloudinary.com')) {
-                qrCodeUrl = shopData.qrCodeImage;
-                console.log("✅ Using Cloudinary QR from shop_config");
-            }
-            // Priority 2: QR from upiSettings
-            else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
-                     shopData.upiSettings.qrCodeImage.includes('cloudinary.com')) {
-                qrCodeUrl = shopData.upiSettings.qrCodeImage;
-                console.log("✅ Using Cloudinary QR from upiSettings");
-            }
-            // Priority 3: Fallback - generate QR from UPI ID
-            else if (upiId) {
-                qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}`;
-                console.log("✅ Generated QR from UPI ID (fallback)");
-            }
-            
-            // Update UI elements
-            const upiIdElement = document.getElementById('displayUpiId');
-            const qrImageElement = document.getElementById('qrCodeImage');
-            
-            if (upiIdElement && upiId) {
-                upiIdElement.textContent = upiId;
-                console.log("✅ UPI ID updated:", upiId);
-            }
-            
-            if (qrImageElement && qrCodeUrl) {
-                // Add timestamp to prevent caching
-                const qrUrlWithTimestamp = qrCodeUrl + (qrCodeUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
-                qrImageElement.src = qrUrlWithTimestamp;
-                qrImageElement.alt = "Scan to pay via UPI";
-                qrImageElement.style.display = 'block';
-                console.log("✅ QR Code updated");
-            }
-            
-            // 3. Show/Hide payment options based on shop settings
-            const upiPaymentOption = document.getElementById('upiPaymentOption');
-            const codPaymentOption = document.getElementById('codPaymentOption');
-            
-            // Get payment methods settings
-            let upiEnabled = true; // Default enabled
-            let codEnabled = true; // Default enabled
-            
-            if (shopData.paymentMethods) {
-                upiEnabled = shopData.paymentMethods.upi !== false;
-                codEnabled = shopData.paymentMethods.cash !== false;
-            } else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
-                upiEnabled = shopData.upiSettings.acceptedMethods.upi !== false;
-                codEnabled = shopData.upiSettings.acceptedMethods.cash !== false;
-            }
-            
-            // Update UI visibility
-            if (upiPaymentOption) {
-                upiPaymentOption.style.display = upiEnabled ? 'flex' : 'none';
-                console.log("✅ UPI option:", upiEnabled ? "shown" : "hidden");
-            }
-            
-            if (codPaymentOption) {
-                codPaymentOption.style.display = codEnabled ? 'flex' : 'none';
-                console.log("✅ COD option:", codEnabled ? "shown" : "hidden");
-            }
-            
-            // If no payment methods available, show message
-            if (!upiEnabled && !codEnabled) {
-                hideUPIOptions();
-            }
+function updatePaymentSectionUI(shopData) {
+    console.log("🔥 updatePaymentSectionUI CALLED:", shopData);
+    
+    // 🔥 CRITICAL FIX: Store in global variable
+    if (shopData) {
+        SHOP_CONFIG = shopData;
+        console.log("💾 SHOP_CONFIG saved:", SHOP_CONFIG);
+    }
+    
+    if (!shopData) {
+        console.log("❌ No shop data to update UI");
+        // Don't hide, just return
+        return;
+    }
+    
+    // 1. EXTRACT UPI ID (from multiple locations) - FIXED LOGIC
+    let upiId = "";
+    
+    // Priority 1: Direct upiId
+    if (shopData.upiId) {
+        upiId = shopData.upiId;
+        console.log("📌 UPI from shopData.upiId:", upiId);
+    }
+    // Priority 2: From upiSettings object
+    else if (shopData.upiSettings && shopData.upiSettings.upiId) {
+        upiId = shopData.upiSettings.upiId;
+        console.log("📌 UPI from upiSettings:", upiId);
+    }
+    // Priority 3: Check nested locations
+    else if (shopData.settings && shopData.settings.upiId) {
+        upiId = shopData.settings.upiId;
+        console.log("📌 UPI from settings:", upiId);
+    }
+    
+    // 2. EXTRACT QR IMAGE URL - FIXED LOGIC
+    let qrUrl = "";
+    
+    // Priority 1: Direct qrCodeImage (Cloudinary)
+    if (shopData.qrCodeImage && typeof shopData.qrCodeImage === 'string' && 
+        shopData.qrCodeImage.includes('cloudinary.com')) {
+        qrUrl = shopData.qrCodeImage;
+        console.log("📸 QR from shopData.qrCodeImage:", qrUrl);
+    }
+    // Priority 2: QR from upiSettings
+    else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
+             typeof shopData.upiSettings.qrCodeImage === 'string' &&
+             shopData.upiSettings.qrCodeImage.includes('cloudinary.com')) {
+        qrUrl = shopData.upiSettings.qrCodeImage;
+        console.log("📸 QR from upiSettings.qrCodeImage:", qrUrl);
+    }
+    // Priority 3: QR from settings
+    else if (shopData.settings && shopData.settings.qrCodeImage &&
+             typeof shopData.settings.qrCodeImage === 'string' &&
+             shopData.settings.qrCodeImage.includes('cloudinary.com')) {
+        qrUrl = shopData.settings.qrCodeImage;
+        console.log("📸 QR from settings.qrCodeImage:", qrUrl);
+    }
+    // Priority 4: Fallback - generate QR from UPI ID
+    else if (upiId) {
+        qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}`;
+        console.log("📸 QR generated from UPI ID:", qrUrl);
+    }
+    // Priority 5: Check if QR is stored in different field names
+    else if (shopData.qrImage) {
+        qrUrl = shopData.qrImage;
+        console.log("📸 QR from qrImage field:", qrUrl);
+    }
+    else if (shopData.qrCode) {
+        qrUrl = shopData.qrCode;
+        console.log("📸 QR from qrCode field:", qrUrl);
+    }
+    
+    console.log("🎯 Final UPI to display:", upiId || "NOT FOUND");
+    console.log("🎯 Final QR URL:", qrUrl || "NOT FOUND");
+    
+    // 3. UPDATE UI ELEMENTS - FIXED ERROR HANDLING
+    const upiElement = document.getElementById('displayUpiId');
+    const qrElement = document.getElementById('qrCodeImage');
+    const qrSection = document.getElementById('qrCodeSection');
+    
+    // Update UPI ID
+    if (upiElement) {
+        if (upiId) {
+            upiElement.textContent = upiId;
+            console.log("✅ UPI ID updated in UI:", upiId);
+        } else {
+            upiElement.textContent = "UPI ID not configured";
+            upiElement.style.color = "#999";
+            console.log("⚠️ No UPI ID found, showing placeholder");
         }
+    } else {
+        console.log("❌ UPI element (#displayUpiId) not found in HTML");
+    }
+    
+    // Update QR Code
+    if (qrElement) {
+        if (qrUrl) {
+            // Add timestamp to prevent caching
+            const timestamp = Date.now();
+            const separator = qrUrl.includes('?') ? '&' : '?';
+            qrElement.src = qrUrl + separator + 't=' + timestamp;
+            qrElement.alt = "Scan to pay via UPI";
+            qrElement.style.display = 'block';
+            
+            console.log("✅ QR src updated with timestamp:", timestamp);
+            
+            // Debug image loading
+            qrElement.onload = function() {
+                console.log("🖼️ QR image loaded successfully");
+                console.log("Image dimensions:", this.naturalWidth + "x" + this.naturalHeight);
+            };
+            
+            qrElement.onerror = function() {
+                console.error("❌ QR image failed to load!");
+                console.log("Failed URL:", this.src);
+                
+                // Try without timestamp
+                this.src = qrUrl;
+            };
+        } else {
+            qrElement.style.display = 'none';
+            console.log("⚠️ No QR URL found, hiding QR image");
+        }
+    } else {
+        console.log("❌ QR element (#qrCodeImage) not found in HTML");
+    }
+    
+    // 4. UPDATE PAYMENT OPTIONS VISIBILITY - FIXED LOGIC
+    const upiOption = document.getElementById('upiPaymentOption');
+    const codOption = document.getElementById('codPaymentOption');
+    
+    if (upiOption) {
+        let upiEnabled = true; // Default
+        
+        if (shopData.paymentMethods) {
+            upiEnabled = shopData.paymentMethods.upi !== false;
+        } 
+        else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
+            upiEnabled = shopData.upiSettings.acceptedMethods.upi !== false;
+        }
+        else if (shopData.settings && shopData.settings.paymentMethods) {
+            upiEnabled = shopData.settings.paymentMethods.upi !== false;
+        }
+        
+        // Hide UPI option if no UPI ID or QR
+        if (!upiId && !qrUrl) {
+            upiEnabled = false;
+            console.log("⚠️ Hiding UPI option: No UPI/QR configured");
+        }
+        
+        upiOption.style.display = upiEnabled ? 'flex' : 'none';
+        console.log("💳 UPI option:", upiEnabled ? "visible" : "hidden");
+    }
+    
+    if (codOption) {
+        let codEnabled = true; // Default
+        
+        if (shopData.paymentMethods) {
+            codEnabled = shopData.paymentMethods.cash !== false;
+        } 
+        else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
+            codEnabled = shopData.upiSettings.acceptedMethods.cash !== false;
+        }
+        else if (shopData.settings && shopData.settings.paymentMethods) {
+            codEnabled = shopData.settings.paymentMethods.cash !== false;
+        }
+        
+        codOption.style.display = codEnabled ? 'flex' : 'none';
+        console.log("💵 COD option:", codEnabled ? "visible" : "hidden");
+    }
+    
+    // Show QR section if UPI is selected and data exists
+    if (qrSection) {
+        const upiRadio = document.getElementById('paymentMethodUpi');
+        if (upiRadio && upiRadio.checked && (upiId || qrUrl)) {
+            qrSection.style.display = 'block';
+        }
+    }
+    
+    console.log("✅ updatePaymentSectionUI completed");
+}
 
-        function hideUPIOptions() {
-            console.log("⚠️ No payment methods available");
-            const upiPaymentOption = document.getElementById('upiPaymentOption');
-            const codPaymentOption = document.getElementById('codPaymentOption');
-            const qrSection = document.getElementById('qrCodeSection');
-            
-            if (upiPaymentOption) upiPaymentOption.style.display = 'none';
-            if (codPaymentOption) codPaymentOption.style.display = 'none';
-            if (qrSection) qrSection.style.display = 'none';
-        }
+function hideUPIOptions() {
+    console.log("⚠️ No payment methods available");
+    const upiPaymentOption = document.getElementById('upiPaymentOption');
+    const codPaymentOption = document.getElementById('codPaymentOption');
+    const qrSection = document.getElementById('qrCodeSection');
+    
+    if (upiPaymentOption) upiPaymentOption.style.display = 'none';
+    if (codPaymentOption) codPaymentOption.style.display = 'none';
+    if (qrSection) qrSection.style.display = 'none';
+}
 
-        // ==================== FIXED: SETUP PAYMENT SELECTION ====================
-        function setupPaymentSelection() {
-            console.log("🔧 Setting up payment selection listeners");
+// ==================== FIXED: SETUP PAYMENT SELECTION ====================
+function setupPaymentSelection() {
+    console.log("🔧 Setting up payment selection listeners");
+    
+    const upiRadio = document.getElementById('paymentMethodUpi');
+    const codRadio = document.getElementById('paymentMethodCod');
+    const qrSection = document.getElementById('qrCodeSection');
+    
+    if (!upiRadio || !codRadio || !qrSection) {
+        console.log("❌ Payment elements not found, retrying in 500ms");
+        setTimeout(setupPaymentSelection, 500);
+        return;
+    }
+    
+    // UPI Radio listener
+    upiRadio.addEventListener('change', function() {
+        if (this.checked) {
+            console.log("🎯 UPI payment selected");
             
-            const upiRadio = document.getElementById('paymentMethodUpi');
-            const codRadio = document.getElementById('paymentMethodCod');
-            const qrSection = document.getElementById('qrCodeSection');
+            // Show QR section with animation
+            qrSection.style.display = 'block';
+            setTimeout(() => {
+                qrSection.style.opacity = '1';
+                qrSection.style.transform = 'translateY(0)';
+            }, 10);
             
-            if (upiRadio && qrSection) {
-                upiRadio.addEventListener('change', function() {
-                    if (this.checked) {
-                        // Show QR section
-                        qrSection.style.display = 'block';
-                        
-                        // Ensure data is populated
-                        if (SHOP_CONFIG) {
-                            updatePaymentSectionUI(SHOP_CONFIG);
-                        }
-                        
-                        selectedPaymentMethod = 'qr';
-                        console.log("✅ QR payment selected");
-                    }
-                });
+            // Populate data if available
+            if (SHOP_CONFIG) {
+                console.log("🔄 Updating UI with SHOP_CONFIG");
+                updatePaymentSectionUI(SHOP_CONFIG);
+            } else {
+                console.log("⚠️ No SHOP_CONFIG available, trying to load...");
+                // Force reload shop config
+                if (cart.length > 0) {
+                    loadAndListenToShop();
+                }
             }
             
-            if (codRadio && qrSection) {
-                codRadio.addEventListener('change', function() {
-                    if (this.checked) {
-                        // Hide QR section
-                        qrSection.style.display = 'none';
-                        selectedPaymentMethod = 'cod';
-                        console.log("✅ COD payment selected");
-                    }
-                });
-            }
-            
-            // Set default payment method
-            if (codRadio) {
-                codRadio.checked = true;
-                selectedPaymentMethod = 'cod';
-                if (qrSection) qrSection.style.display = 'none';
-            }
+            selectedPaymentMethod = 'qr';
         }
+    });
+    
+    // COD Radio listener
+    codRadio.addEventListener('change', function() {
+        if (this.checked) {
+            console.log("🎯 COD payment selected");
+            
+            // Hide QR section with animation
+            qrSection.style.opacity = '0';
+            qrSection.style.transform = 'translateY(10px)';
+            setTimeout(() => {
+                qrSection.style.display = 'none';
+            }, 300);
+            
+            selectedPaymentMethod = 'cod';
+        }
+    });
+    
+    // Set default payment method
+    codRadio.checked = true;
+    selectedPaymentMethod = 'cod';
+    
+    // Initialize QR section state
+    qrSection.style.transition = 'all 0.3s ease';
+    qrSection.style.opacity = '0';
+    qrSection.style.transform = 'translateY(10px)';
+    qrSection.style.display = 'none';
+    
+    console.log("✅ Payment selection setup complete");
+}
+
+// ==================== NEW: FORCE UI REFRESH FUNCTION ====================
+function forceRefreshPaymentUI() {
+    console.log("🔄 Force refreshing payment UI");
+    
+    if (SHOP_CONFIG) {
+        updatePaymentSectionUI(SHOP_CONFIG);
+    } else if (currentShopId) {
+        // Reload shop data
+        db.collection('shop_config').doc(currentShopId).get()
+            .then(doc => {
+                if (doc.exists) {
+                    SHOP_CONFIG = doc.data();
+                    updatePaymentSectionUI(SHOP_CONFIG);
+                    console.log("✅ Shop config reloaded");
+                }
+            })
+            .catch(error => {
+                console.error("❌ Error reloading shop config:", error);
+            });
+    }
+}
+
+// ==================== UPDATE: LOAD AND LISTEN TO SHOP ====================
+// Add this line inside loadAndListenToShop() function where onSnapshot is called:
+// Replace the existing onSnapshot callback with this:
+
+// Inside loadAndListenToShop() function, around line where onSnapshot is called:
+// shopConfigRef.onSnapshot((doc) => { ... }, error => { ... });
+
+// Update the onSnapshot success callback to:
+if (doc.exists) {
+    const shopData = doc.data();
+    console.log("📡 REAL-TIME SHOP DATA:", shopData);
+    
+    // Debug: Show all fields
+    console.log("🔍 All fields in shopData:", Object.keys(shopData));
+    if (shopData.upiSettings) {
+        console.log("🔍 upiSettings content:", shopData.upiSettings);
+    }
+    
+    SHOP_CONFIG = shopData;
+    
+    // Force UI update immediately
+    updatePaymentSectionUI(shopData);
+    
+    // Also update global shop data for coupons
+    loadShopData();
+}
 
         // ==================== FIXED: ADD TO CART WITH SHOP SYNC ====================
         async function addToCart(productId) {
