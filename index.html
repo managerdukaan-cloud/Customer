@@ -2681,6 +2681,21 @@ function loadShopConfig() {
 
                 console.log('Shop config updated:', SHOP_CONFIG);
 
+                // ======== ADD THESE LINES ========
+                // Update UPI and QR Code in checkout page
+                const upiElement = document.getElementById('dynamicUpiId');
+                const qrElement = document.getElementById('dynamicQRCode');
+                
+                if (upiElement && SHOP_CONFIG.upiId) {
+                    upiElement.textContent = SHOP_CONFIG.upiId;
+                    console.log("✅ UPI ID updated in UI:", SHOP_CONFIG.upiId);
+                }
+                if (qrElement && SHOP_CONFIG.qrCodeImage) {
+                    qrElement.src = SHOP_CONFIG.qrCodeImage;
+                    console.log("✅ QR Code updated in UI");
+                }
+                // ======== END ADD ========
+
                 // ✅ always update QR (UPI ya QR image dono cases)
                 updateCouponSection();
             });
