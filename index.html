@@ -3042,26 +3042,6 @@ function forceRefreshPaymentUI() {
 // Inside loadAndListenToShop() function, around line where onSnapshot is called:
 // shopConfigRef.onSnapshot((doc) => { ... }, error => { ... });
 
-// Update the onSnapshot success callback to:
-if (doc.exists) {
-    const shopData = doc.data();
-    console.log("📡 REAL-TIME SHOP DATA:", shopData);
-    
-    // Debug: Show all fields
-    console.log("🔍 All fields in shopData:", Object.keys(shopData));
-    if (shopData.upiSettings) {
-        console.log("🔍 upiSettings content:", shopData.upiSettings);
-    }
-    
-    SHOP_CONFIG = shopData;
-    
-    // Force UI update immediately
-    updatePaymentSectionUI(shopData);
-    
-    // Also update global shop data for coupons
-    loadShopData();
-}
-
         // ==================== FIXED: ADD TO CART WITH SHOP SYNC ====================
         async function addToCart(productId) {
             try {
