@@ -3422,7 +3422,7 @@ async function loadAndListenToShop() {
 
     const shopRef = firebase.firestore().collection('shops').doc(shopId);
 
-    // Listen for real-time updates
+        // Listen for real-time updates
     shopRef.onSnapshot((docSnapshot) => {
         if (docSnapshot.exists) {
             currentShopData = docSnapshot.data();
@@ -3436,6 +3436,82 @@ async function loadAndListenToShop() {
     }, (error) => {
         console.error("Error listening to shop updates:", error);
     });
+}
+
+// ==================== UPDATE PAYMENT UI FUNCTION ====================
+// Function to update the Payment/UPI section in the UI
+function updatePaymentSectionUI(shopData) {
+    // 1. Update UPI ID Text if element exists
+    const upiIdElement = document.getElementById('displayUpiId');
+    if (upiIdElement && shopData.upiId) {
+        upiIdElement.textContent = `UPI ID: ${shopData.upiId}`;
+        upiIdElement.style.display = 'block';
+    }
+
+    // 2. Update QR Code Image if element exists
+    const qrCodeImgElement = document.getElementById('qrCodeImage');
+    if (qrCodeImgElement && shopData.qrCodeImage) {
+        qrCodeImgElement.src = shopData.qrCodeImage;
+        qrCodeImgElement.style.display = 'block';
+        qrCodeImgElement.alt = "Scan to pay via UPI";
+    }
+
+    // 3. Show/Hide UPI Payment Option based on shop settings
+    const upiPaymentOption = document.getElementById('upiPaymentOption');
+    const upiPaymentLabel = document.querySelector('label[for="upiPaymentOption"]');
+    if (upiPaymentOption && shopData.paymentMethods) {
+        if (shopData.paymentMethods.upi) {
+            upiPaymentOption.style.display = 'block';
+            if (upiPaymentLabel) upiPaymentLabel.style.display = 'block';
+        } else {
+            upiPaymentOption.style.display = 'none';
+            if (upiPaymentLabel) upiPaymentLabel.style.display = 'none';
+        }
+    }
+
+    // 4. Show/Hide Cash on Delivery Option
+    const codPaymentOption = document.getElementById('codPaymentOption');
+    const codPaymentLabel = document.querySelector('label[for="codPaymentOption"]');
+    if (codPaymentOption && shopData.paymentMethods) {
+        if (shopData.paymentMethods.cash) {
+            codPaymentOption.style.display = 'block';
+            if (codPaymentLabel) codPaymentLabel.style.display = 'block';
+        } else {
+            codPaymentOption.style.display = 'none';
+            if (codPaymentLabel) codPaymentLabel.style.display = 'none';
+        }
+    }
+}
+
+// ==================== SETUP PAYMENT SELECTION ====================
+// Function to show UPI details when UPI option is selected
+function setupPaymentSelection() {
+    const upiRadio = document.getElementById('paymentMethodUpi');
+    const upiDetailsSection = document.getElementById('upiDetailsSection');
+    
+    if (upiRadio && upiDetailsSection) {
+        upiRadio.addEventListener('change', function() {
+            if (this.checked) {
+                // Show the UPI details section
+                upiDetailsSection.style.display = 'block';
+                
+                // Ensure data is populated from currentShopData
+                if (currentShopData) {
+                    updatePaymentSectionUI(currentShopData);
+                }
+            }
+        });
+    }
+    
+    // Hide UPI details if other method is selected
+    const codRadio = document.getElementById('paymentMethodCod');
+    if (codRadio) {
+        codRadio.addEventListener('change', function() {
+            if (this.checked && upiDetailsSection) {
+                upiDetailsSection.style.display = 'none';
+            }
+        });
+    }
 }
         // Update cart UI
         function updateCartUI() {
