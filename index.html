@@ -2653,72 +2653,332 @@
         let currentTrackingOrder = null;
         let SHOP_CONFIG = null;
         let SHOP_COUPONS = [];
-        let SHOP_DATA = null; // Store shop data for coupon validation
+        let SHOP_DATA = null;
 
-        let shopConfigUnsubscribe = null;
+        // ==================== FIXED: SHOP CONFIG LISTENER ====================
+        let currentShopListener = null;
+        let currentShopId = null;
 
-/// ==================== SHOP CONFIG LISTENER ====================
-let shopConfigUnsubscribe = null;
+        function loadAndListenToShop() {
+            // Unsubscribe previous listener if any
+            if (currentShopListener) {
+                currentShopListener();
+                currentShopListener = null;
+                console.log("🔄 Unsubscribed previous shop listener");
+            }
 
-// Load shop configuration from Firebase (REAL-TIME + NO STALE DATA)
-function loadShopConfig() {
-    try {
-        console.log("🚀 Starting shop config listener...");
-        
-        // Unsubscribe existing listener if any
-        if (shopConfigUnsubscribe) {
-            console.log("🔄 Unsubscribing old listener...");
-            shopConfigUnsubscribe();
-            shopConfigUnsubscribe = null;
+            // Get shop ID from cart
+            if (!cart || cart.length === 0) {
+                console.log("🛒 Cart is empty, no shop to listen to");
+                currentShopId = null;
+                return;
+            }
+
+            const shopIdFromCart = cart[0].shopId;
+            if (!shopIdFromCart) {
+                console.error("❌ No shopId found in cart items");
+                return;
+            }
+
+            // If already listening to same shop, do nothing
+            if (currentShopId === shopIdFromCart) {
+                console.log("✅ Already listening to shop:", shopIdFromCart);
+                return;
+            }
+
+            currentShopId = shopIdFromCart;
+            console.log("🎯 Setting up listener for shop:", shopIdFromCart);
+
+            // Listen to shop-specific config (FIXED: shop_config/{shopId} instead of shop_config/settings)
+            const shopConfigRef = db.collection('shop_config').doc(shopIdFromCart);
+            
+            currentShopListener = shopConfigRef.onSnapshot(
+                (doc) => {
+                    console.log("📡 Real-time shop config update received for:", shopIdFromCart);
+                    
+                    if (doc.exists) {
+                        const shopData = doc.data();
+                        SHOP_CONFIG = shopData;
+                        console.log("✅ Shop config loaded:", shopData);
+                        
+                        // Update UI with shop data
+                        updatePaymentSectionUI(shopData);
+                    } else {
+                        console.log("⚠️ No config found for shop:", shopIdFromCart);
+                        SHOP_CONFIG = null;
+                        
+                        // Fallback: Try to get from shops collection
+                        loadShopDataForPayment(shopIdFromCart);
+                    }
+                },
+                (error) => {
+                    console.error("❌ Error listening to shop config:", error);
+                    SHOP_CONFIG = null;
+                }
+            );
+
+            // Also load shop data for coupons and other info
+            loadShopData();
         }
 
-        shopConfigUnsubscribe = db
-            .collection('shop_config')
-            .doc('settings')
-            .onSnapshot(doc => {
-                console.log("📡 Real-time update received!");
-                
-                if (!doc.exists) {
-                    console.warn('shop_config/settings not found');
-                    return;
+        // Fallback function to get payment methods from shops collection
+        async function loadShopDataForPayment(shopId) {
+            try {
+                const shopDoc = await db.collection('shops').doc(shopId).get();
+                if (shopDoc.exists) {
+                    const shopData = shopDoc.data();
+                    console.log("✅ Fallback shop data loaded:", shopData);
+                    
+                    // Create a config-like object from shop data
+                    SHOP_CONFIG = {
+                        upiId: shopData.upiId,
+                        qrCodeImage: shopData.qrCodeImage,
+                        upiSettings: shopData.upiSettings,
+                        paymentMethods: shopData.paymentMethods
+                    };
+                    
+                    updatePaymentSectionUI(shopData);
                 }
+            } catch (error) {
+                console.error("❌ Error loading fallback shop data:", error);
+            }
+        }
 
-                const newData = doc.data();
-                console.log("New data from Firestore:", newData);
-                
-                // ✅ merge config
-                SHOP_CONFIG = {
-                    ...SHOP_CONFIG,
-                    ...newData
-                };
-
-                console.log('✅ Shop config updated:', SHOP_CONFIG);
-
-                // Update UPI and QR Code in checkout page
-                const upiElement = document.getElementById('dynamicUpiId');
-                const qrElement = document.getElementById('dynamicQRCode');
-                
-                if (upiElement && SHOP_CONFIG.upiId) {
-                    upiElement.textContent = SHOP_CONFIG.upiId;
-                    console.log("✅ UPI ID updated in UI:", SHOP_CONFIG.upiId);
-                }
-                if (qrElement && SHOP_CONFIG.qrCodeImage) {
-                    qrElement.src = SHOP_CONFIG.qrCodeImage;
-                    console.log("✅ QR Code updated in UI");
-                }
-
-                // ✅ always update QR (UPI ya QR image dono cases)
-                updateCouponSection();
-            }, error => {
-                console.error('❌ onSnapshot error:', error);
-            });
+        // ==================== FIXED: UPDATE PAYMENT UI ====================
+        function updatePaymentSectionUI(shopData) {
+            console.log("🔄 Updating payment UI with:", shopData);
             
-        console.log("✅ Listener started successfully!");
+            if (!shopData) {
+                console.log("❌ No shop data to update UI");
+                hideUPIOptions();
+                return;
+            }
+            
+            // 1. Get UPI ID from multiple possible locations
+            const upiId = shopData.upiId || 
+                         (shopData.upiSettings && shopData.upiSettings.upiId);
+            
+            // 2. Get QR Code URL from multiple possible locations
+            let qrCodeUrl = '';
+            
+            // Priority 1: Direct Cloudinary QR image (from shop_config)
+            if (shopData.qrCodeImage && shopData.qrCodeImage.includes('cloudinary.com')) {
+                qrCodeUrl = shopData.qrCodeImage;
+                console.log("✅ Using Cloudinary QR from shop_config");
+            }
+            // Priority 2: QR from upiSettings
+            else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
+                     shopData.upiSettings.qrCodeImage.includes('cloudinary.com')) {
+                qrCodeUrl = shopData.upiSettings.qrCodeImage;
+                console.log("✅ Using Cloudinary QR from upiSettings");
+            }
+            // Priority 3: Fallback - generate QR from UPI ID
+            else if (upiId) {
+                qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}`;
+                console.log("✅ Generated QR from UPI ID (fallback)");
+            }
+            
+            // Update UI elements
+            const upiIdElement = document.getElementById('displayUpiId');
+            const qrImageElement = document.getElementById('qrCodeImage');
+            
+            if (upiIdElement && upiId) {
+                upiIdElement.textContent = upiId;
+                console.log("✅ UPI ID updated:", upiId);
+            }
+            
+            if (qrImageElement && qrCodeUrl) {
+                // Add timestamp to prevent caching
+                const qrUrlWithTimestamp = qrCodeUrl + (qrCodeUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+                qrImageElement.src = qrUrlWithTimestamp;
+                qrImageElement.alt = "Scan to pay via UPI";
+                qrImageElement.style.display = 'block';
+                console.log("✅ QR Code updated");
+            }
+            
+            // 3. Show/Hide payment options based on shop settings
+            const upiPaymentOption = document.getElementById('upiPaymentOption');
+            const codPaymentOption = document.getElementById('codPaymentOption');
+            
+            // Get payment methods settings
+            let upiEnabled = true; // Default enabled
+            let codEnabled = true; // Default enabled
+            
+            if (shopData.paymentMethods) {
+                upiEnabled = shopData.paymentMethods.upi !== false;
+                codEnabled = shopData.paymentMethods.cash !== false;
+            } else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
+                upiEnabled = shopData.upiSettings.acceptedMethods.upi !== false;
+                codEnabled = shopData.upiSettings.acceptedMethods.cash !== false;
+            }
+            
+            // Update UI visibility
+            if (upiPaymentOption) {
+                upiPaymentOption.style.display = upiEnabled ? 'flex' : 'none';
+                console.log("✅ UPI option:", upiEnabled ? "shown" : "hidden");
+            }
+            
+            if (codPaymentOption) {
+                codPaymentOption.style.display = codEnabled ? 'flex' : 'none';
+                console.log("✅ COD option:", codEnabled ? "shown" : "hidden");
+            }
+            
+            // If no payment methods available, show message
+            if (!upiEnabled && !codEnabled) {
+                hideUPIOptions();
+            }
+        }
 
-    } catch (error) {
-        console.error('Error in loadShopConfig:', error);
-    }
-}
+        function hideUPIOptions() {
+            console.log("⚠️ No payment methods available");
+            const upiPaymentOption = document.getElementById('upiPaymentOption');
+            const codPaymentOption = document.getElementById('codPaymentOption');
+            const qrSection = document.getElementById('qrCodeSection');
+            
+            if (upiPaymentOption) upiPaymentOption.style.display = 'none';
+            if (codPaymentOption) codPaymentOption.style.display = 'none';
+            if (qrSection) qrSection.style.display = 'none';
+        }
+
+        // ==================== FIXED: SETUP PAYMENT SELECTION ====================
+        function setupPaymentSelection() {
+            console.log("🔧 Setting up payment selection listeners");
+            
+            const upiRadio = document.getElementById('paymentMethodUpi');
+            const codRadio = document.getElementById('paymentMethodCod');
+            const qrSection = document.getElementById('qrCodeSection');
+            
+            if (upiRadio && qrSection) {
+                upiRadio.addEventListener('change', function() {
+                    if (this.checked) {
+                        // Show QR section
+                        qrSection.style.display = 'block';
+                        
+                        // Ensure data is populated
+                        if (SHOP_CONFIG) {
+                            updatePaymentSectionUI(SHOP_CONFIG);
+                        }
+                        
+                        selectedPaymentMethod = 'qr';
+                        console.log("✅ QR payment selected");
+                    }
+                });
+            }
+            
+            if (codRadio && qrSection) {
+                codRadio.addEventListener('change', function() {
+                    if (this.checked) {
+                        // Hide QR section
+                        qrSection.style.display = 'none';
+                        selectedPaymentMethod = 'cod';
+                        console.log("✅ COD payment selected");
+                    }
+                });
+            }
+            
+            // Set default payment method
+            if (codRadio) {
+                codRadio.checked = true;
+                selectedPaymentMethod = 'cod';
+                if (qrSection) qrSection.style.display = 'none';
+            }
+        }
+
+        // ==================== FIXED: ADD TO CART WITH SHOP SYNC ====================
+        async function addToCart(productId) {
+            try {
+                const product = PRODUCTS.find(p => p.id === productId);
+                if (!product) return;
+                
+                // Check if cart already has items from different shop
+                if (cart.length > 0) {
+                    const firstShopId = cart[0].shopId;
+                    if (firstShopId !== product.shopId) {
+                        showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
+                        return;
+                    }
+                }
+                
+                const existingItem = cart.find(item => item.id === productId);
+                
+                if (existingItem) {
+                    existingItem.quantity += 1;
+                } else {
+                    cart.push({
+                        id: product.id,
+                        name: product.name,
+                        price: product.price,
+                        image: product.image,
+                        quantity: 1,
+                        shopId: product.shopId,
+                        shopName: product.shopName
+                    });
+                }
+                
+                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+                updateCartUI();
+                showToast('Product added to cart!');
+                
+                // 🔥 CRITICAL FIX: Load shop config when first item is added
+                if (cart.length === 1) {
+                    loadAndListenToShop();
+                }
+                
+                // Load shop data for coupon validation
+                await loadShopData();
+                
+            } catch (error) {
+                console.error('Error adding to cart:', error);
+                showToast('Error adding product to cart');
+            }
+        }
+
+        // ==================== FIXED: UPDATE CART UI ====================
+        function updateCartUI() {
+            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+            const bottomCartCount = document.getElementById('bottomCartCount');
+            
+            if (bottomCartCount) {
+                bottomCartCount.textContent = totalItems;
+                bottomCartCount.style.display = totalItems > 0 ? 'block' : 'none';
+            }
+            
+            updateOrderSummary();
+            
+            // 🔥 CRITICAL FIX: Setup payment selection when cart opens
+            if (cart.length > 0) {
+                setupPaymentSelection();
+            }
+        }
+
+        // ==================== FIXED: OPEN BOTTOM SHEET ====================
+        function openBottomSheet() {
+            if (cart.length === 0) {
+                showToast('Your cart is empty');
+                return;
+            }
+
+            document.getElementById('bsheet').classList.add('open');
+            
+            // Ensure shop config is loaded
+            loadAndListenToShop();
+            
+            // Setup payment selection
+            setupPaymentSelection();
+            
+            updateOrderSummary();
+            
+            if (!selectedAddress && addresses.length > 0) {
+                selectedAddress = addresses.find(addr => addr.isDefault)?.id || addresses[0].id;
+                fillCheckoutForm(addresses.find(addr => addr.id === selectedAddress));
+            }
+            renderAddresses();
+            
+            // Update coupon section when bottom sheet opens
+            updateCouponSection();
+        }
+
+        // ==================== REST OF THE CODE (UNCHANGED) ====================
         // Load shop data including coupon settings
         async function loadShopData() {
             try {
@@ -2759,14 +3019,6 @@ function loadShopConfig() {
             }
         }
 
-        function updateQRCode() {
-    if (!SHOP_CONFIG || !SHOP_CONFIG.qrCodeImage) return;
-
-    const qrImage = document.getElementById('dynamicQRCode');
-    if (!qrImage) return;
-
-    qrImage.src = SHOP_CONFIG.qrCodeImage;
-}
         const AVAILABLE_COUPONS = [
             { code: "WELCOME10", type: "percentage", value: 10, minOrder: 500, description: "Get 10% OFF on orders above ₹500" },
             { code: "FLAT50", type: "fixed", value: 50, minOrder: 300, description: "Get ₹50 OFF on orders above ₹300" }
@@ -2976,109 +3228,110 @@ function loadShopConfig() {
         }
 
         // Load order history
-async function loadOrderHistory() {
-    if (!currentUser || !isOnline) return;
+        async function loadOrderHistory() {
+            if (!currentUser || !isOnline) return;
 
-    try {
-        console.log("🔄 Loading order history");
+            try {
+                console.log("🔄 Loading order history");
 
-        // ❌ orderBy REMOVED to include old orders
-        const snapshot = await db
-            .collection('orders')
-            .where('customerId', '==', currentUser.uid)
-            .get();
+                // ❌ orderBy REMOVED to include old orders
+                const snapshot = await db
+                    .collection('orders')
+                    .where('customerId', '==', currentUser.uid)
+                    .get();
 
-        orders = [];
+                orders = [];
 
-        snapshot.forEach(doc => {
-            const firebaseOrder = doc.data();
-            const orderIdToUse = firebaseOrder.orderId || doc.id;
+                snapshot.forEach(doc => {
+                    const firebaseOrder = doc.data();
+                    const orderIdToUse = firebaseOrder.orderId || doc.id;
 
-            // ✅ SAFE DATE FALLBACK
-            let createdDate;
-            if (firebaseOrder.createdAt && firebaseOrder.createdAt.toDate) {
-                createdDate = firebaseOrder.createdAt.toDate();
-            } else {
-                createdDate = new Date(0); // VERY OLD DATE
+                    // ✅ SAFE DATE FALLBACK
+                    let createdDate;
+                    if (firebaseOrder.createdAt && firebaseOrder.createdAt.toDate) {
+                        createdDate = firebaseOrder.createdAt.toDate();
+                    } else {
+                        createdDate = new Date(0); // VERY OLD DATE
+                    }
+
+                    const mappedOrder = {
+                        id: orderIdToUse,
+                        orderId: orderIdToUse,
+                        date: createdDate.toISOString(),
+                        createdAt: createdDate.getTime(),
+                        items: firebaseOrder.items || [],
+                        address: firebaseOrder.address || {},
+                        phone: firebaseOrder.phone || '',
+                        paymentMethod: firebaseOrder.paymentMethod || 'cod',
+                        status: firebaseOrder.status || 'confirmed',
+                        subtotal: firebaseOrder.subtotal || firebaseOrder.total || 0,
+                        discount: firebaseOrder.discount || 0,
+                        total: firebaseOrder.total || 0,
+                        tracking: firebaseOrder.tracking || {
+                            confirmed: createdDate.toISOString()
+                        },
+                        refundStatus: firebaseOrder.refundStatus || null,
+                        refundAmount: firebaseOrder.refundAmount || 0
+                    };
+
+                    orders.push(mappedOrder);
+                });
+
+                // 🔥 SORT IN JS (NEW FIRST, OLD LAST)
+                orders.sort((a, b) => b.createdAt - a.createdAt);
+
+                localStorage.setItem('dukaan_orders', JSON.stringify(orders));
+                renderOrders();
+
+            } catch (error) {
+                console.error('❌ Error loading order history:', error);
+
+                const savedOrders = localStorage.getItem('dukaan_orders');
+                if (savedOrders) {
+                    orders = JSON.parse(savedOrders);
+                    renderOrders();
+                }
             }
-
-            const mappedOrder = {
-                id: orderIdToUse,
-                orderId: orderIdToUse,
-                date: createdDate.toISOString(),
-                createdAt: createdDate.getTime(),
-                items: firebaseOrder.items || [],
-                address: firebaseOrder.address || {},
-                phone: firebaseOrder.phone || '',
-                paymentMethod: firebaseOrder.paymentMethod || 'cod',
-                status: firebaseOrder.status || 'confirmed',
-                subtotal: firebaseOrder.subtotal || firebaseOrder.total || 0,
-                discount: firebaseOrder.discount || 0,
-                total: firebaseOrder.total || 0,
-                tracking: firebaseOrder.tracking || {
-                    confirmed: createdDate.toISOString()
-                },
-                refundStatus: firebaseOrder.refundStatus || null,
-                refundAmount: firebaseOrder.refundAmount || 0
-            };
-
-            orders.push(mappedOrder);
-        });
-
-        // 🔥 SORT IN JS (NEW FIRST, OLD LAST)
-        orders.sort((a, b) => b.createdAt - a.createdAt);
-
-        localStorage.setItem('dukaan_orders', JSON.stringify(orders));
-        renderOrders();
-
-    } catch (error) {
-        console.error('❌ Error loading order history:', error);
-
-        const savedOrders = localStorage.getItem('dukaan_orders');
-        if (savedOrders) {
-            orders = JSON.parse(savedOrders);
-            renderOrders();
         }
-    }
-}
 
         function startRealTimeOrderListener() {
-    if (!currentUser) return;
+            if (!currentUser) return;
 
-    console.log("🔔 Starting real-time order listener");
+            console.log("🔔 Starting real-time order listener");
 
-    db.collection('orders')
-        .where('customerId', '==', currentUser.uid)
-        .onSnapshot(snapshot => {
+            db.collection('orders')
+                .where('customerId', '==', currentUser.uid)
+                .onSnapshot(snapshot => {
 
-            snapshot.docChanges().forEach(change => {
-                const data = change.doc.data();
-                const orderIdToUse = data.orderId || change.doc.id;
+                    snapshot.docChanges().forEach(change => {
+                        const data = change.doc.data();
+                        const orderIdToUse = data.orderId || change.doc.id;
 
-                let createdDate;
-                if (data.createdAt && data.createdAt.toDate) {
-                    createdDate = data.createdAt.toDate();
-                } else {
-                    createdDate = new Date(0);
-                }
+                        let createdDate;
+                        if (data.createdAt && data.createdAt.toDate) {
+                            createdDate = data.createdAt.toDate();
+                        } else {
+                            createdDate = new Date(0);
+                        }
 
-                const updatedOrder = {
-                    id: orderIdToUse,
-                    orderId: orderIdToUse,
-                    date: createdDate.toISOString(),
-                    createdAt: createdDate.getTime(),
-                    ...data
-                };
+                        const updatedOrder = {
+                            id: orderIdToUse,
+                            orderId: orderIdToUse,
+                            date: createdDate.toISOString(),
+                            createdAt: createdDate.getTime(),
+                            ...data
+                        };
 
-                if (change.type === 'added' || change.type === 'modified') {
-                    handleOrderUpdate(updatedOrder);
-                }
-            });
+                        if (change.type === 'added' || change.type === 'modified') {
+                            handleOrderUpdate(updatedOrder);
+                        }
+                    });
 
-            orders.sort((a, b) => b.createdAt - a.createdAt);
-            renderOrders();
-        });
-}
+                    orders.sort((a, b) => b.createdAt - a.createdAt);
+                    renderOrders();
+                });
+        }
+
         // Handle order update
         function handleOrderUpdate(updatedOrder) {
             const orderIndex = orders.findIndex(order => order.id === updatedOrder.id);
@@ -3177,28 +3430,28 @@ async function loadOrderHistory() {
         }
         
         function handleOnlineStatus() {
-    if (isOnline) return; // ✅ prevent multiple re-triggers
-    isOnline = true;
+            if (isOnline) return;
+            isOnline = true;
 
-    console.log('✅ Internet connection restored');
-    document.getElementById('offlineNotification').style.display = 'none';
-    document.getElementById('offlineOverlay').style.display = 'none';
+            console.log('✅ Internet connection restored');
+            document.getElementById('offlineNotification').style.display = 'none';
+            document.getElementById('offlineOverlay').style.display = 'none';
 
-    const onlineNotification = document.getElementById('onlineNotification');
-    onlineNotification.style.display = 'block';
-    onlineNotification.innerHTML = '<i class="fas fa-wifi"></i> You are back online';
+            const onlineNotification = document.getElementById('onlineNotification');
+            onlineNotification.style.display = 'block';
+            onlineNotification.innerHTML = '<i class="fas fa-wifi"></i> You are back online';
 
-    setTimeout(() => {
-        onlineNotification.style.display = 'none';
-    }, 3000);
+            setTimeout(() => {
+                onlineNotification.style.display = 'none';
+            }, 3000);
 
-    if (currentUser) {
-        loadProductsFromFirebase();
-        loadOrderHistory();
-        startRealTimeOrderListener();
-        loadShopData(); // ✅ shopConfig intentionally NOT called
-    }
-}
+            if (currentUser) {
+                loadProductsFromFirebase();
+                loadOrderHistory();
+                startRealTimeOrderListener();
+                loadShopData();
+            }
+        }
         
         function handleOfflineStatus() {
             isOnline = false;
@@ -3396,481 +3649,6 @@ async function loadOrderHistory() {
             renderProducts(sortedProducts);
         }
 
-        // Add to cart
-async function addToCart(productId) {
-    try {
-        const product = PRODUCTS.find(p => p.id === productId);
-        if (!product) return;
-        
-        // Check if cart already has items from different shop
-        if (SHOP_CONFIG && !SHOP_CONFIG.multipleShopsAllowed && cart.length > 0) {
-            const firstShopId = cart[0].shopId;
-            if (firstShopId !== product.shopId) {
-                showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                return;
-            }
-        }
-        
-        const existingItem = cart.find(item => item.id === productId);
-        
-        if (existingItem) {
-            existingItem.quantity += 1;
-        } else {
-            cart.push({
-                id: product.id,
-                name: product.name,
-                price: product.price,
-                image: product.image,
-                quantity: 1,
-                shopId: product.shopId,
-                shopName: product.shopName
-            });
-        }
-        
-        localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-        updateCartUI();
-        showToast('Product added to cart!');
-        
-        // Load shop data for coupon validation
-        await loadShopData();
-        
-        // ======== ADD THIS LINE ========
-        // Load shop data for payment settings
-        loadAndListenToShop();
-        
-    } catch (error) {
-        console.error('Error adding to cart:', error);
-        showToast('Error adding product to cart');
-    }
-}
-
-// ==================== SHOP DATA & UPI REAL-TIME SYNC ====================
-let currentShopData = null; // Global variable to store shop info
-
-// Function to load and listen for shop updates (Call this on page load)
-async function loadAndListenToShop() {
-    // Get shop ID from cart only
-    let shopId = null;
-    
-    // Check cart for shop ID
-    if (cart && cart.length > 0) {
-        shopId = cart[0].shopId;
-        console.log("Shop ID from cart:", shopId);
-    } 
-    else {
-        console.warn("Cart is empty. Will try again when items are added.");
-        return;
-    }
-
-    if (!shopId) {
-        console.error("Shop ID not found. Cannot load shop data.");
-        return;
-    }
-
-    const shopRef = firebase.firestore().collection('shops').doc(shopId);
-
-    // Listen for real-time updates
-    shopRef.onSnapshot((docSnapshot) => {
-        if (docSnapshot.exists) {
-            currentShopData = docSnapshot.data();
-            console.log("Shop data updated (Real-time):", currentShopData);
-            
-            // Update the UI with new shop/UPI data
-            updatePaymentSectionUI(currentShopData);
-        } else {
-            console.log("No such shop document!");
-        }
-    }, (error) => {
-        console.error("Error listening to shop updates:", error);
-    });
-}
-
-// ==================== UPDATE PAYMENT UI FUNCTION ====================
-// Function to update the Payment/UPI section in the UI
-function updatePaymentSectionUI(shopData) {
-    console.log("🔄 Updating payment UI with:", shopData);
-    
-    if (!shopData) {
-        console.log("❌ No shop data provided");
-        return;
-    }
-    
-    // 1. Update UPI ID Text
-    const upiIdElement = document.getElementById('dynamicUpiId');
-    if (upiIdElement) {
-        // Get UPI ID from multiple possible locations
-        const upiId = shopData.upiId || 
-                     (shopData.upiSettings && shopData.upiSettings.upiId);
-        
-        if (upiId) {
-            upiIdElement.textContent = upiId;
-            console.log("✅ UPI ID updated:", upiId);
-        }
-    }
-
-    // 2. Update QR Code Image - FIXED TO USE CLOUDINARY QR
-    const qrCodeImgElement = document.getElementById('dynamicQRCode');
-    if (qrCodeImgElement) {
-        // Get QR URL from multiple possible locations
-        let qrUrl = '';
-        
-        // First check direct qrCodeImage field
-        if (shopData.qrCodeImage && shopData.qrCodeImage.includes('http')) {
-            qrUrl = shopData.qrCodeImage;
-        }
-        // Then check in upiSettings
-        else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
-                 shopData.upiSettings.qrCodeImage.includes('http')) {
-            qrUrl = shopData.upiSettings.qrCodeImage;
-        }
-        
-        console.log("QR URL found:", qrUrl);
-        
-        if (qrUrl) {
-            // Use Cloudinary QR code with timestamp to prevent caching
-            qrCodeImgElement.src = qrUrl + "?t=" + Date.now();
-            qrCodeImgElement.alt = "Scan to pay via UPI";
-            qrCodeImgElement.style.display = 'block';
-            console.log("✅ QR Code updated to Cloudinary image");
-        } else {
-            // Fallback: Generate QR from UPI ID
-            const upiId = shopData.upiId || 
-                         (shopData.upiSettings && shopData.upiSettings.upiId);
-            if (upiId) {
-                qrCodeImgElement.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}`;
-                console.log("✅ QR generated from UPI ID (fallback)");
-            }
-        }
-    }
-
-    // 3. Show/Hide UPI Payment Option
-    const upiPaymentOption = document.querySelector('[data-method="qr"]');
-    if (upiPaymentOption) {
-        // Get payment methods from multiple locations
-        let upiEnabled = false;
-        
-        if (shopData.paymentMethods) {
-            upiEnabled = shopData.paymentMethods.upi;
-        } else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
-            upiEnabled = shopData.upiSettings.acceptedMethods.upi;
-        }
-        
-        upiPaymentOption.style.display = upiEnabled ? 'flex' : 'none';
-        console.log("✅ UPI option:", upiEnabled ? "shown" : "hidden");
-    }
-
-    // 4. Show/Hide Cash on Delivery Option
-    const codPaymentOption = document.querySelector('[data-method="cod"]');
-    if (codPaymentOption) {
-        // Get payment methods from multiple locations
-        let codEnabled = false;
-        
-        if (shopData.paymentMethods) {
-            codEnabled = shopData.paymentMethods.cash;
-        } else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
-            codEnabled = shopData.upiSettings.acceptedMethods.cash;
-        }
-        
-        codPaymentOption.style.display = codEnabled ? 'flex' : 'none';
-        console.log("✅ COD option:", codEnabled ? "shown" : "hidden");
-    }
-}
-
-// ==================== SETUP PAYMENT SELECTION ====================
-// Function to show UPI details when UPI option is selected
-function setupPaymentSelection() {
-    const upiRadio = document.getElementById('paymentMethodUpi');
-    const upiDetailsSection = document.getElementById('qrCodeSection');
-    
-    if (upiRadio && upiDetailsSection) {
-        upiRadio.addEventListener('change', function() {
-            if (this.checked) {
-                // Show the UPI details section
-                upiDetailsSection.style.display = 'block';
-                
-                // Ensure data is populated from currentShopData
-                if (currentShopData) {
-                    updatePaymentSectionUI(currentShopData);
-                }
-            }
-        });
-    }
-    
-    // Hide UPI details if other method is selected
-    const codRadio = document.getElementById('paymentMethodCod');
-    if (codRadio && upiDetailsSection) {
-        codRadio.addEventListener('change', function() {
-            if (this.checked) {
-                upiDetailsSection.style.display = 'none';
-            }
-        });
-    }
-}
-                
-                // Ensure data is populated from currentShopData
-                if (currentShopData) {
-                    updatePaymentSectionUI(currentShopData);
-                }
-            }
-        });
-    }
-    
-    // Hide UPI details if other method is selected
-    const codRadio = document.getElementById('paymentMethodCod');
-    if (codRadio) {
-        codRadio.addEventListener('change', function() {
-            if (this.checked && upiDetailsSection) {
-                upiDetailsSection.style.display = 'none';
-            }
-        });
-    }
-}
-        // Update cart UI
-function updateCartUI() {
-    const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const bottomCartCount = document.getElementById('bottomCartCount');
-    
-    if (bottomCartCount) {
-        bottomCartCount.textContent = totalItems;
-        bottomCartCount.style.display = totalItems > 0 ? 'block' : 'none';
-    }
-    
-    updateOrderSummary();
-    
-    // ======== ADD THESE LINES ========
-    // Load shop data when cart has items and we don't have shop data yet
-    if (cart.length > 0 && !currentShopData) {
-        loadAndListenToShop();
-    }
-}
-
-// Update order summary in cart
-function updateOrderSummary() {
-    const orderList = document.getElementById('orderList');
-    if (!orderList) return;
-    
-    orderList.innerHTML = '';
-    let subtotal = 0;
-    
-    cart.forEach((item, index) => {
-        const itemTotal = item.price * item.quantity;
-        subtotal += itemTotal;
-        
-        const orderItem = document.createElement('div');
-        orderItem.className = 'order-item-summary';
-        orderItem.innerHTML = `
-            <div style="flex: 1;">
-                <strong>${item.name}</strong>
-                <div class="text-muted">₹${item.price} each</div>
-                <div class="quantity-controls" style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                    <button onclick="updateCartQuantity(${index}, -1)" 
-                            style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--neutral); display: flex; align-items: center; justify-content: center;">-</button>
-                    <span style="font-weight: 600; min-width: 20px; text-align: center;">${item.quantity}</span>
-                    <button onclick="updateCartQuantity(${index}, 1)" 
-                            style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--neutral); display: flex; align-items: center; justify-content: center;">+</button>
-                </div>
-            </div>
-            <div>₹${itemTotal}</div>
-        `;
-        orderList.appendChild(orderItem);
-    });
-    
-    let discount = 0;
-    if (appliedCoupon) {
-        // Validate coupon minimum order value
-        if (subtotal < appliedCoupon.minOrder) {
-            // Remove coupon if cart value is below minimum
-            appliedCoupon = null;
-            document.getElementById('couponCode').value = '';
-            document.getElementById('couponMessage').textContent = 'Cart value is below coupon minimum. Coupon removed.';
-            document.getElementById('couponMessage').className = 'coupon-error';
-        } else {
-            if (appliedCoupon.type === 'percentage') {
-                discount = (subtotal * appliedCoupon.value) / 100;
-            } else {
-                discount = appliedCoupon.value;
-            }
-            discount = Math.min(discount, subtotal);
-        }
-    }
-            
-            // Remove delivery charge
-            const total = Math.max(0, subtotal - discount);
-            const orderTotal = document.getElementById('orderTotal');
-            const qrAmount = document.getElementById('qrAmount');
-            
-            if (orderTotal) orderTotal.textContent = `₹${Math.max(0, total)}`;
-            if (qrAmount) qrAmount.textContent = `₹${Math.max(0, total)}`;
-            updateQRCode(); // ✅ force re-render QR after amount + config both ready
-
-            
-            const placeOrderBtn = document.getElementById('placeOrderBtn');
-            if (placeOrderBtn) {
-                placeOrderBtn.disabled = cart.length === 0;
-            }
-        }
-
-        // Update cart quantity
-        function updateCartQuantity(index, change) {
-            if (cart[index]) {
-                const newQuantity = cart[index].quantity + change;
-
-                if (newQuantity <= 0) {
-                    cart.splice(index, 1);
-                    showToast('Item removed from cart');
-                } else if (newQuantity > 10) {
-                    cart[index].quantity = 10;
-                    showToast('Maximum 10 items allowed');
-                    return;
-                } else {
-                    cart[index].quantity = newQuantity;
-                }
-                
-                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-                updateCartUI();
-                
-                // Re-validate coupon after quantity change
-                if (appliedCoupon) {
-                    validateCouponOnCartUpdate();
-                }
-            }
-        }
-
-        // Validate coupon on cart update
-        function validateCouponOnCartUpdate() {
-            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            
-            if (appliedCoupon && subtotal < appliedCoupon.minOrder) {
-                appliedCoupon = null;
-                document.getElementById('couponCode').value = '';
-                document.getElementById('couponMessage').textContent = 'Cart value is below coupon minimum. Coupon removed.';
-                document.getElementById('couponMessage').className = 'coupon-error';
-                updateOrderSummary();
-                showToast('Coupon removed due to low cart value', 'warning');
-            }
-        }
-
-        // Wishlist functions
-        function toggleWishlist(productId) {
-            const index = wishlist.indexOf(productId);
-            
-            if (index > -1) {
-                wishlist.splice(index, 1);
-                showToast('Removed from wishlist');
-            } else {
-                wishlist.push(productId);
-                showToast('Added to wishlist');
-            }
-            
-            localStorage.setItem('dukaan_wishlist', JSON.stringify(wishlist));
-            updateWishlistUI();
-            renderProducts(PRODUCTS);
-            renderWishlistItems();
-        }
-
-        function updateWishlistUI() {
-            const wishlistCount = document.getElementById('wishlistCount');
-            if (wishlistCount) {
-                wishlistCount.textContent = wishlist.length;
-                wishlistCount.style.display = wishlist.length > 0 ? 'block' : 'none';
-            }
-        }
-
-        // Render wishlist items
-        function renderWishlistItems() {
-            const wishlistItems = document.getElementById('wishlistItems');
-            const noWishlist = document.getElementById('noWishlist');
-            
-            if (!wishlistItems) return;
-
-            wishlistItems.innerHTML = '';
-            
-            if (wishlist.length === 0) {
-                if (noWishlist) noWishlist.style.display = 'block';
-                return;
-            }
-            
-            if (noWishlist) noWishlist.style.display = 'none';
-            
-            wishlist.forEach(productId => {
-                const product = PRODUCTS.find(p => p.id === productId);
-                if (!product) return;
-                
-                const shopName = product.shopName || 'Unknown Shop';
-                const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
-                
-                const productCard = document.createElement('div');
-                productCard.className = 'product-card';
-                productCard.innerHTML = `
-                    <div class="shop-badge">${shopName}</div>
-                    <button class="wishlist-btn active" onclick="toggleWishlist('${product.id}')">
-                        <i class="fas fa-heart"></i>
-                    </button>
-                    <img src="${product.image}" alt="${product.name}" class="product-image" onclick="showProductDetail('${product.id}')">
-                    <h3 class="product-title" onclick="showProductDetail('${product.id}')">${product.name}</h3>
-                    <p class="product-category">${product.category} • ${product.deliveryTime || '10-15 min'}</p>
-                    <div class="product-price">
-                        <span class="current-price">₹${product.price}</span>
-                        ${product.mrp ? `<span class="original-price">₹${product.mrp}</span>` : ''}
-                        ${discount > 0 ? `<span class="discount">${discount}% OFF</span>` : ''}
-                    </div>
-                    <div class="card-actions">
-                        <button class="btn-add-cart" onclick="addToCart('${product.id}')">
-                            <i class="fas fa-shopping-cart"></i> Add to Cart
-                        </button>
-                    </div>
-                `;
-                wishlistItems.appendChild(productCard);
-            });
-        }
-
-        // Product detail functions
-        function showProductDetail(productId) {
-            const product = PRODUCTS.find(p => p.id === productId);
-            if (!product) return;
-            
-            currentProductDetail = product;
-            const shop = SHOPS[product.shopId] || { name: product.shopName || 'Unknown Shop', deliveryTime: product.deliveryTime || '10-15 min' };
-            const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
-            const isInWishlist = wishlist.includes(product.id);
-            
-            document.getElementById('productDetailImage').src = product.image;
-            document.getElementById('productDetailTitle').textContent = product.name;
-            document.getElementById('productDetailCategory').textContent = `${product.category} • ${shop.name} • ${shop.deliveryTime}`;
-            document.getElementById('productDetailCurrent').textContent = `₹${product.price}`;
-            document.getElementById('productDetailOriginal').textContent = product.mrp ? `₹${product.mrp}` : '';
-            document.getElementById('productDetailDiscount').textContent = discount > 0 ? `${discount}% OFF` : '';
-            document.getElementById('productDetailDescription').textContent = product.description;
-            
-            const wishlistBtn = document.getElementById('wishlistDetailBtn');
-            if (wishlistBtn) {
-                wishlistBtn.classList.toggle('active', isInWishlist);
-            }
-            
-            document.getElementById('quantityValue').textContent = '1';
-            
-            document.getElementById('homePage').style.display = 'none';
-            document.getElementById('productDetailPage').style.display = 'block';
-        }
-
-        function closeProductDetail() {
-            document.getElementById('productDetailPage').style.display = 'none';
-            document.getElementById('homePage').style.display = 'block';
-        }
-
-        function changeQuantity(change) {
-            const quantityElement = document.getElementById('quantityValue');
-            if (!quantityElement) return;
-
-            let quantity = parseInt(quantityElement.textContent);
-            quantity += change;
-            
-            if (quantity < 1) quantity = 1;
-            if (quantity > 10) quantity = 10;
-            
-            quantityElement.textContent = quantity;
-        }
-
         function addToCartFromDetail() {
             if (!currentProductDetail) return;
             
@@ -3880,7 +3658,7 @@ function updateOrderSummary() {
             if (!product) return;
             
             // Check if cart already has items from different shop
-            if (SHOP_CONFIG && !SHOP_CONFIG.multipleShopsAllowed && cart.length > 0) {
+            if (cart.length > 0) {
                 const firstShopId = cart[0].shopId;
                 if (firstShopId !== product.shopId) {
                     showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
@@ -4978,31 +4756,6 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
         }
 
         // Bottom sheet
-function openBottomSheet() {
-    if (cart.length === 0) {
-        showToast('Your cart is empty');
-        return;
-    }
-
-    document.getElementById('bsheet').classList.add('open');
-    document.getElementById('qrCodeSection').style.display = 'block';
-
-    setTimeout(updateQRCode, 50);
-}
-
-            
-            updateOrderSummary();
-            document.getElementById('bsheet').classList.add('open');
-            if (!selectedAddress && addresses.length > 0) {
-                selectedAddress = addresses.find(addr => addr.isDefault)?.id || addresses[0].id;
-                fillCheckoutForm(addresses.find(addr => addr.id === selectedAddress));
-            }
-            renderAddresses();
-            
-            // Update coupon section when bottom sheet opens
-            updateCouponSection();
-        }
-
         function closeBottomSheet() {
             document.getElementById('bsheet').classList.remove('open');
             document.getElementById('qrCodeSection').style.display = 'none';
@@ -5011,27 +4764,254 @@ function openBottomSheet() {
         }
 
         // Payment methods
-function selectPaymentMethod(method) {
-    selectedPaymentMethod = method;
-    
-    document.querySelectorAll('.payment-option').forEach(option => {
-        option.classList.remove('selected');
-        if (option.getAttribute('data-method') === method) {
-            option.classList.add('selected');
-        }
-    });
-    
-    const qrCodeSection = document.getElementById('qrCodeSection');
-    if (qrCodeSection) {
-        qrCodeSection.style.display = method === 'qr' ? 'block' : 'none';
+        function selectPaymentMethod(method) {
+            selectedPaymentMethod = method;
+            
+            document.querySelectorAll('.payment-option').forEach(option => {
+                option.classList.remove('selected');
+                if (option.getAttribute('data-method') === method) {
+                    option.classList.add('selected');
+                }
+            });
+            
+            const qrCodeSection = document.getElementById('qrCodeSection');
+            if (qrCodeSection) {
+                qrCodeSection.style.display = method === 'qr' ? 'block' : 'none';
 
-        if (method === 'qr') {
-            setTimeout(updateQRCode, 50);
+                if (method === 'qr') {
+                    // Ensure data is populated
+                    if (SHOP_CONFIG) {
+                        updatePaymentSectionUI(SHOP_CONFIG);
+                    }
+                }
+            }
         }
-    }
-}
 
-        // Coupon functions - UPDATED VERSION
+        // Update order summary in cart
+        function updateOrderSummary() {
+            const orderList = document.getElementById('orderList');
+            if (!orderList) return;
+            
+            orderList.innerHTML = '';
+            let subtotal = 0;
+            
+            cart.forEach((item, index) => {
+                const itemTotal = item.price * item.quantity;
+                subtotal += itemTotal;
+                
+                const orderItem = document.createElement('div');
+                orderItem.className = 'order-item-summary';
+                orderItem.innerHTML = `
+                    <div style="flex: 1;">
+                        <strong>${item.name}</strong>
+                        <div class="text-muted">₹${item.price} each</div>
+                        <div class="quantity-controls" style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                            <button onclick="updateCartQuantity(${index}, -1)" 
+                                    style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--neutral); display: flex; align-items: center; justify-content: center;">-</button>
+                            <span style="font-weight: 600; min-width: 20px; text-align: center;">${item.quantity}</span>
+                            <button onclick="updateCartQuantity(${index}, 1)" 
+                                    style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--neutral); display: flex; align-items: center; justify-content: center;">+</button>
+                        </div>
+                    </div>
+                    <div>₹${itemTotal}</div>
+                `;
+                orderList.appendChild(orderItem);
+            });
+            
+            let discount = 0;
+            if (appliedCoupon) {
+                // Validate coupon minimum order value
+                if (subtotal < appliedCoupon.minOrder) {
+                    // Remove coupon if cart value is below minimum
+                    appliedCoupon = null;
+                    document.getElementById('couponCode').value = '';
+                    document.getElementById('couponMessage').textContent = 'Cart value is below coupon minimum. Coupon removed.';
+                    document.getElementById('couponMessage').className = 'coupon-error';
+                } else {
+                    if (appliedCoupon.type === 'percentage') {
+                        discount = (subtotal * appliedCoupon.value) / 100;
+                    } else {
+                        discount = appliedCoupon.value;
+                    }
+                    discount = Math.min(discount, subtotal);
+                }
+            }
+            
+            const total = Math.max(0, subtotal - discount);
+            const orderTotal = document.getElementById('orderTotal');
+            const qrAmount = document.getElementById('qrAmount');
+            
+            if (orderTotal) orderTotal.textContent = `₹${Math.max(0, total)}`;
+            if (qrAmount) qrAmount.textContent = `₹${Math.max(0, total)}`;
+            
+            const placeOrderBtn = document.getElementById('placeOrderBtn');
+            if (placeOrderBtn) {
+                placeOrderBtn.disabled = cart.length === 0;
+            }
+        }
+
+        // Update cart quantity
+        function updateCartQuantity(index, change) {
+            if (cart[index]) {
+                const newQuantity = cart[index].quantity + change;
+
+                if (newQuantity <= 0) {
+                    cart.splice(index, 1);
+                    showToast('Item removed from cart');
+                } else if (newQuantity > 10) {
+                    cart[index].quantity = 10;
+                    showToast('Maximum 10 items allowed');
+                    return;
+                } else {
+                    cart[index].quantity = newQuantity;
+                }
+                
+                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+                updateCartUI();
+                
+                // Re-validate coupon after quantity change
+                if (appliedCoupon) {
+                    validateCouponOnCartUpdate();
+                }
+            }
+        }
+
+        // Validate coupon on cart update
+        function validateCouponOnCartUpdate() {
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            if (appliedCoupon && subtotal < appliedCoupon.minOrder) {
+                appliedCoupon = null;
+                document.getElementById('couponCode').value = '';
+                document.getElementById('couponMessage').textContent = 'Cart value is below coupon minimum. Coupon removed.';
+                document.getElementById('couponMessage').className = 'coupon-error';
+                updateOrderSummary();
+                showToast('Coupon removed due to low cart value', 'warning');
+            }
+        }
+
+        // Wishlist functions
+        function toggleWishlist(productId) {
+            const index = wishlist.indexOf(productId);
+            
+            if (index > -1) {
+                wishlist.splice(index, 1);
+                showToast('Removed from wishlist');
+            } else {
+                wishlist.push(productId);
+                showToast('Added to wishlist');
+            }
+            
+            localStorage.setItem('dukaan_wishlist', JSON.stringify(wishlist));
+            updateWishlistUI();
+            renderProducts(PRODUCTS);
+            renderWishlistItems();
+        }
+
+        function updateWishlistUI() {
+            const wishlistCount = document.getElementById('wishlistCount');
+            if (wishlistCount) {
+                wishlistCount.textContent = wishlist.length;
+                wishlistCount.style.display = wishlist.length > 0 ? 'block' : 'none';
+            }
+        }
+
+        // Render wishlist items
+        function renderWishlistItems() {
+            const wishlistItems = document.getElementById('wishlistItems');
+            const noWishlist = document.getElementById('noWishlist');
+            
+            if (!wishlistItems) return;
+
+            wishlistItems.innerHTML = '';
+            
+            if (wishlist.length === 0) {
+                if (noWishlist) noWishlist.style.display = 'block';
+                return;
+            }
+            
+            if (noWishlist) noWishlist.style.display = 'none';
+            
+            wishlist.forEach(productId => {
+                const product = PRODUCTS.find(p => p.id === productId);
+                if (!product) return;
+                
+                const shopName = product.shopName || 'Unknown Shop';
+                const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
+                
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                productCard.innerHTML = `
+                    <div class="shop-badge">${shopName}</div>
+                    <button class="wishlist-btn active" onclick="toggleWishlist('${product.id}')">
+                        <i class="fas fa-heart"></i>
+                    </button>
+                    <img src="${product.image}" alt="${product.name}" class="product-image" onclick="showProductDetail('${product.id}')">
+                    <h3 class="product-title" onclick="showProductDetail('${product.id}')">${product.name}</h3>
+                    <p class="product-category">${product.category} • ${product.deliveryTime || '10-15 min'}</p>
+                    <div class="product-price">
+                        <span class="current-price">₹${product.price}</span>
+                        ${product.mrp ? `<span class="original-price">₹${product.mrp}</span>` : ''}
+                        ${discount > 0 ? `<span class="discount">${discount}% OFF</span>` : ''}
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn-add-cart" onclick="addToCart('${product.id}')">
+                            <i class="fas fa-shopping-cart"></i> Add to Cart
+                        </button>
+                    </div>
+                `;
+                wishlistItems.appendChild(productCard);
+            });
+        }
+
+        // Product detail functions
+        function showProductDetail(productId) {
+            const product = PRODUCTS.find(p => p.id === productId);
+            if (!product) return;
+            
+            currentProductDetail = product;
+            const shop = SHOPS[product.shopId] || { name: product.shopName || 'Unknown Shop', deliveryTime: product.deliveryTime || '10-15 min' };
+            const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
+            const isInWishlist = wishlist.includes(product.id);
+            
+            document.getElementById('productDetailImage').src = product.image;
+            document.getElementById('productDetailTitle').textContent = product.name;
+            document.getElementById('productDetailCategory').textContent = `${product.category} • ${shop.name} • ${shop.deliveryTime}`;
+            document.getElementById('productDetailCurrent').textContent = `₹${product.price}`;
+            document.getElementById('productDetailOriginal').textContent = product.mrp ? `₹${product.mrp}` : '';
+            document.getElementById('productDetailDiscount').textContent = discount > 0 ? `${discount}% OFF` : '';
+            document.getElementById('productDetailDescription').textContent = product.description;
+            
+            const wishlistBtn = document.getElementById('wishlistDetailBtn');
+            if (wishlistBtn) {
+                wishlistBtn.classList.toggle('active', isInWishlist);
+            }
+            
+            document.getElementById('quantityValue').textContent = '1';
+            
+            document.getElementById('homePage').style.display = 'none';
+            document.getElementById('productDetailPage').style.display = 'block';
+        }
+
+        function closeProductDetail() {
+            document.getElementById('productDetailPage').style.display = 'none';
+            document.getElementById('homePage').style.display = 'block';
+        }
+
+        function changeQuantity(change) {
+            const quantityElement = document.getElementById('quantityValue');
+            if (!quantityElement) return;
+
+            let quantity = parseInt(quantityElement.textContent);
+            quantity += change;
+            
+            if (quantity < 1) quantity = 1;
+            if (quantity > 10) quantity = 10;
+            
+            quantityElement.textContent = quantity;
+        }
+
+        // Coupon functions
         function updateCouponSection() {
             const couponSection = document.querySelector('.coupon-section');
             const applyCouponBtn = document.getElementById('applyCouponBtn');
@@ -5197,6 +5177,7 @@ function selectPaymentMethod(method) {
                 'Confirm QR Payment',
                 `You are about to confirm your QR payment with UTR: ${utr}. Total amount: ${document.getElementById('qrAmount').textContent}. Please ensure you have completed the payment via QR scan.`,
                 () => {
+                    selectedPaymentMethod = 'qr';
                     showToast('QR payment confirmed! Please click "Place Order Securely" to complete your order.');
                 }
             );
@@ -5633,10 +5614,6 @@ function selectPaymentMethod(method) {
             setupOfflineDetection();
             setupPushNotifications();
             
-            // Load shop configuration
-            loadShopConfig();
-            loadShopData();
-            
             // Load products
             loadProductsFromFirebase();
             
@@ -5699,12 +5676,9 @@ function selectPaymentMethod(method) {
         }
 
         // Start app when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initApp();
-    
-    // ======== ADD THIS LINE ========
-    setupPaymentSelection();
-});
+        document.addEventListener('DOMContentLoaded', function() {
+            initApp();
+        });
     </script>
 </body>
 </html>
