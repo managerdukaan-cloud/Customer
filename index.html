@@ -3367,50 +3367,54 @@ async function loadOrderHistory() {
         }
 
         // Add to cart
-        async function addToCart(productId) {
-            try {
-                const product = PRODUCTS.find(p => p.id === productId);
-                if (!product) return;
-                
-                // Check if cart already has items from different shop
-                if (SHOP_CONFIG && !SHOP_CONFIG.multipleShopsAllowed && cart.length > 0) {
-                    const firstShopId = cart[0].shopId;
-                    if (firstShopId !== product.shopId) {
-                        showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                        return;
-                    }
-                }
-                
-                const existingItem = cart.find(item => item.id === productId);
-                
-                if (existingItem) {
-                    existingItem.quantity += 1;
-                } else {
-                    cart.push({
-                        id: product.id,
-                        name: product.name,
-                        price: product.price,
-                        image: product.image,
-                        quantity: 1,
-                        shopId: product.shopId,
-                        shopName: product.shopName
-                    });
-                }
-                
-                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-                updateCartUI();
-                showToast('Product added to cart!');
-                
-                // Load shop data for coupon validation
-                await loadShopData();
-                
-            } catch (error) {
-                console.error('Error adding to cart:', error);
-                showToast('Error adding product to cart');
+async function addToCart(productId) {
+    try {
+        const product = PRODUCTS.find(p => p.id === productId);
+        if (!product) return;
+        
+        // Check if cart already has items from different shop
+        if (SHOP_CONFIG && !SHOP_CONFIG.multipleShopsAllowed && cart.length > 0) {
+            const firstShopId = cart[0].shopId;
+            if (firstShopId !== product.shopId) {
+                showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
+                return;
             }
         }
+        
+        const existingItem = cart.find(item => item.id === productId);
+        
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                quantity: 1,
+                shopId: product.shopId,
+                shopName: product.shopName
+            });
+        }
+        
+        localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+        updateCartUI();
+        showToast('Product added to cart!');
+        
+        // Load shop data for coupon validation
+        await loadShopData();
+        
+        // ======== ADD THIS LINE ========
+        // Load shop data for payment settings
+        loadAndListenToShop();
+        
+    } catch (error) {
+        console.error('Error adding to cart:', error);
+        showToast('Error adding product to cart');
+    }
+}
 
-        // ==================== SHOP DATA & UPI REAL-TIME SYNC ====================
+// ==================== SHOP DATA & UPI REAL-TIME SYNC ====================
 let currentShopData = null; // Global variable to store shop info
 
 // Function to load and listen for shop updates (Call this on page load)
@@ -3435,7 +3439,7 @@ async function loadAndListenToShop() {
 
     const shopRef = firebase.firestore().collection('shops').doc(shopId);
 
-        // Listen for real-time updates
+    // Listen for real-time updates
     shopRef.onSnapshot((docSnapshot) => {
         if (docSnapshot.exists) {
             currentShopData = docSnapshot.data();
@@ -3454,60 +3458,31 @@ async function loadAndListenToShop() {
 // ==================== UPDATE PAYMENT UI FUNCTION ====================
 // Function to update the Payment/UPI section in the UI
 function updatePaymentSectionUI(shopData) {
-    console.log("🔄 Updating payment UI with:", shopData);
+    console.log("Updating payment UI...");
     
-    // 1. Update UPI ID Text if element exists - USE YOUR EXISTING ID
+    // 1. Update UPI ID Text
     const upiIdElement = document.getElementById('dynamicUpiId');
     if (upiIdElement && shopData.upiId) {
         upiIdElement.textContent = shopData.upiId;
-        console.log("✅ UPI ID updated:", shopData.upiId);
     }
 
-    // 2. Update QR Code Image if element exists - USE YOUR EXISTING ID
+    // 2. Update QR Code Image
     const qrCodeImgElement = document.getElementById('dynamicQRCode');
     if (qrCodeImgElement && shopData.qrCodeImage) {
         qrCodeImgElement.src = shopData.qrCodeImage;
         qrCodeImgElement.alt = "Scan to pay via UPI";
-        console.log("✅ QR Code updated");
     }
 
-    // 3. Show/Hide UPI Payment Option based on shop settings - USE DATA ATTRIBUTE
+    // 3. Show/Hide UPI Payment Option
     const upiPaymentOption = document.querySelector('[data-method="qr"]');
     if (upiPaymentOption && shopData.paymentMethods) {
-        if (shopData.paymentMethods.upi) {
-            upiPaymentOption.style.display = 'flex';
-            console.log("✅ UPI option shown");
-        } else {
-            upiPaymentOption.style.display = 'none';
-            console.log("❌ UPI option hidden");
-        }
+        upiPaymentOption.style.display = shopData.paymentMethods.upi ? 'flex' : 'none';
     }
 
-    // 4. Show/Hide Cash on Delivery Option - USE DATA ATTRIBUTE
+    // 4. Show/Hide Cash on Delivery Option
     const codPaymentOption = document.querySelector('[data-method="cod"]');
     if (codPaymentOption && shopData.paymentMethods) {
-        if (shopData.paymentMethods.cash) {
-            codPaymentOption.style.display = 'flex';
-            console.log("✅ COD option shown");
-        } else {
-            codPaymentOption.style.display = 'none';
-            console.log("❌ COD option hidden");
-        }
-    }
-    
-    console.log("🎯 Payment UI update complete!");
-}
-    // 4. Show/Hide Cash on Delivery Option
-    const codPaymentOption = document.getElementById('codPaymentOption');
-    const codPaymentLabel = document.querySelector('label[for="codPaymentOption"]');
-    if (codPaymentOption && shopData.paymentMethods) {
-        if (shopData.paymentMethods.cash) {
-            codPaymentOption.style.display = 'block';
-            if (codPaymentLabel) codPaymentLabel.style.display = 'block';
-        } else {
-            codPaymentOption.style.display = 'none';
-            if (codPaymentLabel) codPaymentLabel.style.display = 'none';
-        }
+        codPaymentOption.style.display = shopData.paymentMethods.cash ? 'flex' : 'none';
     }
 }
 
