@@ -3240,12 +3240,7 @@ async function addToCart(productId) {
 // Updated placeOrder function with proper null checks
 async function placeOrder() {
 
-    if (SHOP_DATA && String(SHOP_DATA.status).toLowerCase() !== 'active') {
-    showToast('Shop is closed. Orders are not being accepted.');
-        return;
-    }
-
-    if (!isOnline) {
+        if (!isOnline) {
         showToast('Cannot place order while offline', 'error');
         return;
     }
