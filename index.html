@@ -2902,19 +2902,27 @@
 
         // ==================== FIX 1: PRODUCT CARD QUANTITY COUNTER ====================
         // Updated addToCart function with two-way sync
-        async function addToCart(productId) {
-            try {
-                const product = PRODUCTS.find(p => p.id === productId);
-                if (!product) return;
-                
-                // Check if cart already has items from different shop
-                if (cart.length > 0) {
-                    const firstShopId = cart[0].shopId;
-                    if (firstShopId !== product.shopId) {
-                        showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                        return;
-                    }
-                }
+        // ==================== FIX 1: PRODUCT CARD QUANTITY COUNTER ====================
+// Updated addToCart function with two-way sync
+async function addToCart(productId) {
+    try {
+        const product = PRODUCTS.find(p => p.id === productId);
+        if (!product) return;
+
+        // ✅ BLOCK ADD TO CART IF SHOP CLOSED
+        if (SHOP_DATA && String(SHOP_DATA.status).toLowerCase() !== 'active') {
+            showToast('Shop is closed. Orders are not being accepted.');
+            return;
+        }
+        
+        // Check if cart already has items from different shop
+        if (cart.length > 0) {
+            const firstShopId = cart[0].shopId;
+            if (firstShopId !== product.shopId) {
+                showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
+                return;
+            }
+        }
                 
                 const existingItem = cart.find(item => item.id === productId);
                 
