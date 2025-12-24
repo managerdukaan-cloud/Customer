@@ -3058,19 +3058,19 @@
             switch(status) {
                 case 'open':
                     notification.classList.add('shop-status-open');
-                    messageElement.textContent = '🟢 Shop is Open - Accepting Orders';
+                    messageElement.textContent = '🟢 Shops are Open - Start Shopping';
                     break;
                 case 'busy':
                     notification.classList.add('shop-status-busy');
-                    messageElement.textContent = '🟡 Shop is Busy - Accepting Orders';
+                    messageElement.textContent = '🟡 Shops are Busy - Accepting Orders';
                     break;
                 case 'closed':
                     notification.classList.add('shop-status-closed');
-                    messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
+                    messageElement.textContent = '🔴 Shops are Closed - Not Accepting Orders';
                     break;
                 case 'holiday':
                     notification.classList.add('shop-status-holiday');
-                    messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
+                    messageElement.textContent = '🟣 Shops are on Holiday - Not Accepting Orders';
                     break;
             }
             
@@ -3280,15 +3280,14 @@
                     
                 case 'closed':
                     notification.classList.add('shop-status-closed');
-                    // YEH MESSAGE HATA DO YA GENERIC RAKHO
-                    // messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
-                    notification.style.display = 'none'; // CLOSED STATUS HOME PAGE PAR NA DIKHAYE
+                    messageElement.textContent = '🔴 Shops are Closed - Not Accepting Orders';
+                    notification.style.display = 'block';
                     break;
                     
                 case 'holiday':
                     notification.classList.add('shop-status-holiday');
-                    // messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
-                    notification.style.display = 'none'; // HOLIDAY STATUS BHI NA DIKHAYE
+                    messageElement.textContent = '🟣 Shops are on Holiday - Not Accepting Orders';
+                    notification.style.display = 'block';
                     break;
                     
                 default:
@@ -3986,11 +3985,19 @@ function updatePaymentSectionUI(shopData) {
             upiEnabled = false;
         }
         
+        // FIXED: Show proper message when payment method is disabled
         if (upiEnabled) {
             upiOption.style.display = 'flex';
             upiOption.style.opacity = '1';
             upiOption.style.cursor = 'pointer';
-            if (upiRadio) upiRadio.disabled = false;
+            upiOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title">QR Code Payment</div>
+                    <div class="payment-desc">Scan QR code to pay instantly</div>
+                </div>
+                <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;">
+            `;
         } else {
             upiOption.style.display = 'flex';
             upiOption.style.opacity = '0.5';
@@ -4003,7 +4010,6 @@ function updatePaymentSectionUI(shopData) {
                 </div>
                 <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" disabled>
             `;
-            if (upiRadio) upiRadio.disabled = true;
         }
     }
     
@@ -4023,7 +4029,14 @@ function updatePaymentSectionUI(shopData) {
             codOption.style.display = 'flex';
             codOption.style.opacity = '1';
             codOption.style.cursor = 'pointer';
-            if (codRadio) codRadio.disabled = false;
+            codOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title">Cash on Delivery</div>
+                    <div class="payment-desc">Pay when you receive your order</div>
+                </div>
+                <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;">
+            `;
         } else {
             codOption.style.display = 'flex';
             codOption.style.opacity = '0.5';
@@ -4036,7 +4049,6 @@ function updatePaymentSectionUI(shopData) {
                 </div>
                 <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" disabled>
             `;
-            if (codRadio) codRadio.disabled = true;
         }
     }
     
@@ -6745,113 +6757,81 @@ function updatePaymentSectionUI(shopData) {
             upiEnabled = false;
         }
         
-        // In updatePaymentSectionUI() function, where you create the payment options:
-if (upiEnabled) {
-    // UPI is enabled
-    upiOption.style.display = 'flex';
-    upiOption.style.opacity = '1';
-    upiOption.style.cursor = 'pointer';
-    upiOption.innerHTML = `
-        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
-        <div class="payment-info">
-            <div class="payment-title">QR Code Payment</div>
-            <div class="payment-desc">Scan QR code to pay instantly</div>
-        </div>
-        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;">
-    `;
-    
-    // Add click handler to prevent selection if disabled
-    upiOption.onclick = function(e) {
-        if (!upiEnabled) {
-            e.preventDefault();
-            showToast('This payment method is temporarily unavailable', 'warning');
+        // FIXED: Show proper message when payment method is disabled
+        if (upiEnabled) {
+            upiOption.style.display = 'flex';
+            upiOption.style.opacity = '1';
+            upiOption.style.cursor = 'pointer';
+            upiOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title">QR Code Payment</div>
+                    <div class="payment-desc">Scan QR code to pay instantly</div>
+                </div>
+                <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;">
+            `;
+        } else {
+            upiOption.style.display = 'flex';
+            upiOption.style.opacity = '0.5';
+            upiOption.style.cursor = 'not-allowed';
+            upiOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title" style="color: #999;">QR Code Payment</div>
+                    <div class="payment-desc" style="color: #FF6B6B;">This payment method is temporarily unavailable</div>
+                </div>
+                <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" disabled>
+            `;
         }
-    };
-} else {
-    // UPI is disabled
-    upiOption.style.display = 'flex';
-    upiOption.style.opacity = '0.5';
-    upiOption.style.cursor = 'not-allowed';
-    upiOption.innerHTML = `
-        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
-        <div class="payment-info">
-            <div class="payment-title" style="color: #999;">QR Code Payment</div>
-            <div class="payment-desc" style="color: #FF6B6B;">This payment method is temporarily unavailable</div>
-        </div>
-        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" disabled>
-    `;
-    
-    // Prevent any clicks on disabled option
-    upiOption.onclick = function(e) {
-        e.preventDefault();
-        showToast('This payment method is temporarily unavailable', 'warning');
-    };
-}
-
-if (codOption) {
-    let codEnabled = true;
-    if (shopData.paymentMethods) {
-        codEnabled = shopData.paymentMethods.cash !== false;
-    } 
-    else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
-        codEnabled = shopData.upiSettings.acceptedMethods.cash !== false;
-    }
-    else if (shopData.settings && shopData.settings.paymentMethods) {
-        codEnabled = shopData.settings.paymentMethods.cash !== false;
     }
     
-    if (codEnabled) {
-        codOption.style.display = 'flex';
-        codOption.style.opacity = '1';
-        codOption.style.cursor = 'pointer';
-        codOption.innerHTML = `
-            <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
-            <div class="payment-info">
-                <div class="payment-title">Cash on Delivery</div>
-                <div class="payment-desc">Pay when you receive your order</div>
-            </div>
-            <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;">
-        `;
+    if (codOption) {
+        let codEnabled = true;
+        if (shopData.paymentMethods) {
+            codEnabled = shopData.paymentMethods.cash !== false;
+        } 
+        else if (shopData.upiSettings && shopData.upiSettings.acceptedMethods) {
+            codEnabled = shopData.upiSettings.acceptedMethods.cash !== false;
+        }
+        else if (shopData.settings && shopData.settings.paymentMethods) {
+            codEnabled = shopData.settings.paymentMethods.cash !== false;
+        }
         
-        // Re-attach event listener
-        const newCodRadio = document.getElementById('paymentMethodCod');
-        if (newCodRadio) {
-            newCodRadio.addEventListener('change', function() {
-                if (this.checked && !this.disabled) {
-                    selectPaymentMethod('cod');
-                }
-            });
-            
-            // Set as default if UPI is disabled
-            if (!upiEnabled) {
-                newCodRadio.checked = true;
-                selectPaymentMethod('cod');
-            }
+        if (codEnabled) {
+            codOption.style.display = 'flex';
+            codOption.style.opacity = '1';
+            codOption.style.cursor = 'pointer';
+            codOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title">Cash on Delivery</div>
+                    <div class="payment-desc">Pay when you receive your order</div>
+                </div>
+                <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;">
+            `;
+        } else {
+            codOption.style.display = 'flex';
+            codOption.style.opacity = '0.5';
+            codOption.style.cursor = 'not-allowed';
+            codOption.innerHTML = `
+                <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="payment-info">
+                    <div class="payment-title" style="color: #999;">Cash on Delivery</div>
+                    <div class="payment-desc" style="color: #FF6B6B;">This payment method is temporarily unavailable</div>
+                </div>
+                <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" disabled>
+            `;
         }
-    } else {
-        codOption.style.display = 'flex';
-        codOption.style.opacity = '0.5';
-        codOption.style.cursor = 'not-allowed';
-        codOption.innerHTML = `
-            <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
-            <div class="payment-info">
-                <div class="payment-title" style="color: #999;">Cash on Delivery</div>
-                <div class="payment-desc" style="color: #FF6B6B;">This payment method is temporarily unavailable</div>
-            </div>
-            <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" disabled>
-        `;
     }
-}
-
-if (qrSection) {
-    if (upiRadio && upiRadio.checked && upiEnabled) {
-        qrSection.style.display = 'block';
-    } else {
-        qrSection.style.display = 'none';
+    
+    if (qrSection) {
+        if (upiRadio && upiRadio.checked && (upiId || qrUrl)) {
+            qrSection.style.display = 'block';
+        }
     }
+    
+    console.log("✅ updatePaymentSectionUI completed");
 }
-
-console.log("✅ updatePaymentSectionUI completed");
 
 function showLoading(show) {
     const placeOrderBtn = document.getElementById('placeOrderBtn');
@@ -6933,34 +6913,211 @@ function showSearchResults(products) {
             <img src="${product.image || 'https://via.placeholder.com/50'}" alt="${product.name}" class="search-result-image" onerror="this.src='https://via.placeholder.com/50'">
             <div class="search-result-info">
                 <div class="search-result-name">${product.name}</div>
-                <div class="search-result-category">${product.category || ''} • ${product.shopName || ''}</div>
+                <div class="search-result-category">${product.category}</div>
+                <div class="search-result-price">₹${product.price}</div>
             </div>
-            <div class="search-result-price">₹${product.price || 0}</div>
         `;
-        searchItem.addEventListener('click', () => {
-            const searchInput = document.getElementById('search');
-            if (searchInput) {
-                searchInput.value = product.name;
-            }
-            if (typeof showProductDetail === 'function') {
-                showProductDetail(product.id);
-            }
+        searchItem.onclick = () => {
+            document.getElementById('search').value = product.name;
+            showProductDetail(product.id);
             searchResults.style.display = 'none';
-        });
+        };
         searchResults.appendChild(searchItem);
     });
     
     searchResults.style.display = 'block';
 }
 
-// Start app when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof initApp === 'function') {
-        initApp();
-    } else {
-        console.error('initApp function not defined');
-    }
-});
-</script>
+        // ==================== FIXED: Missing functions ====================
+        function loadUserProfile() {
+            // Load user profile data
+            if (currentUser) {
+                document.getElementById('profileUserName').textContent = currentUser.name;
+                document.getElementById('profileUserEmail').textContent = currentUser.email;
+                document.getElementById('avatarText').textContent = currentUser.name.charAt(0).toUpperCase();
+            }
+        }
+
+        function changeProfilePicture() {
+            document.getElementById('avatarUpload').click();
+        }
+
+        function showLoginHistory() {
+            const loginHistorySection = document.getElementById('loginHistorySection');
+            if (loginHistorySection.style.display === 'none') {
+                loginHistorySection.style.display = 'block';
+                document.getElementById('loginHistoryList').innerHTML = `
+                    <div class="login-session session-active">
+                        <div><strong>Current Session</strong></div>
+                        <div>${new Date().toLocaleString()}</div>
+                        <div><small>This device</small></div>
+                    </div>
+                `;
+            } else {
+                loginHistorySection.style.display = 'none';
+            }
+        }
+
+        function changeLanguage() {
+            showToast('Language change feature coming soon!');
+        }
+
+        function closeOrderTracking() {
+            document.getElementById('orderTracking').classList.remove('open');
+        }
+
+        function showPickupLocation() {
+            showToast('Pickup location: Store Address, City, Pincode');
+        }
+
+        function validatePhone() {
+            const phoneInput = document.getElementById('checkoutPhone');
+            const phone = phoneInput.value.trim();
+            const validationElement = document.getElementById('phoneValidation');
+            
+            if (phone.length === 0) {
+                validationElement.textContent = '';
+                phoneInput.classList.remove('phone-valid', 'phone-invalid');
+                return;
+            }
+            
+            const isValid = validatePhoneNumber(phone);
+            if (isValid) {
+                phoneInput.classList.add('phone-valid');
+                phoneInput.classList.remove('phone-invalid');
+                validationElement.textContent = '✓ Valid phone number';
+                validationElement.className = 'validation-message validation-success';
+            } else {
+                phoneInput.classList.add('phone-invalid');
+                phoneInput.classList.remove('phone-valid');
+                validationElement.textContent = 'Please enter a valid 10-digit phone number';
+                validationElement.className = 'validation-message validation-error';
+            }
+        }
+
+        function closeShopStatusOverlay() {
+            document.getElementById('shopStatusOverlay').style.display = 'none';
+        }
+
+        // ==================== NEW: Search modal functions ====================
+        function openEnhancedSearch() {
+            document.getElementById('searchModal').style.display = 'block';
+            document.getElementById('searchOverlay').style.display = 'block';
+            document.getElementById('enhancedSearchInput').focus();
+            loadRecentSearches();
+            loadPopularSearches();
+        }
+
+        function closeEnhancedSearch() {
+            document.getElementById('searchModal').style.display = 'none';
+            document.getElementById('searchOverlay').style.display = 'none';
+        }
+
+        function loadRecentSearches() {
+            const recentSearches = JSON.parse(localStorage.getItem('dukaan_recent_searches')) || [];
+            const recentSearchesList = document.getElementById('recentSearchesList');
+            
+            recentSearchesList.innerHTML = '';
+            recentSearches.forEach(search => {
+                const searchItem = document.createElement('div');
+                searchItem.className = 'recent-search-item';
+                searchItem.textContent = search;
+                searchItem.onclick = () => {
+                    document.getElementById('enhancedSearchInput').value = search;
+                    performEnhancedSearch(search);
+                };
+                recentSearchesList.appendChild(searchItem);
+            });
+        }
+
+        function loadPopularSearches() {
+            const popularSearches = ['Milk', 'Bread', 'Eggs', 'Rice', 'Oil', 'Butter', 'Cheese', 'Yogurt'];
+            const popularSearchesList = document.getElementById('popularSearchesList');
+            
+            popularSearchesList.innerHTML = '';
+            popularSearches.forEach(search => {
+                const searchItem = document.createElement('div');
+                searchItem.className = 'popular-search-item';
+                searchItem.innerHTML = `
+                    <div><i class="fas fa-search" style="color: var(--text-light);"></i></div>
+                    <div>${search}</div>
+                `;
+                searchItem.onclick = () => {
+                    document.getElementById('enhancedSearchInput').value = search;
+                    performEnhancedSearch(search);
+                };
+                popularSearchesList.appendChild(searchItem);
+            });
+        }
+
+        function clearRecentSearches() {
+            localStorage.removeItem('dukaan_recent_searches');
+            loadRecentSearches();
+            showToast('Recent searches cleared');
+        }
+
+        function performEnhancedSearch(query) {
+            if (!query.trim()) return;
+            
+            // Save to recent searches
+            let recentSearches = JSON.parse(localStorage.getItem('dukaan_recent_searches')) || [];
+            recentSearches = recentSearches.filter(s => s !== query);
+            recentSearches.unshift(query);
+            recentSearches = recentSearches.slice(0, 10);
+            localStorage.setItem('dukaan_recent_searches', JSON.stringify(recentSearches));
+            
+            // Perform search
+            document.getElementById('search').value = query;
+            handleSearch();
+            closeEnhancedSearch();
+        }
+
+        function resetFilters() {
+            document.getElementById('minPrice').value = 0;
+            document.getElementById('maxPrice').value = 5000;
+            document.getElementById('priceRange').value = 5000;
+            document.querySelectorAll('.rating-filter').forEach(cb => cb.checked = false);
+            document.querySelectorAll('.shop-filter-item').forEach(item => item.classList.remove('selected'));
+            
+            showToast('Filters reset');
+        }
+
+        function applyAdvancedFilters() {
+            const minPrice = parseInt(document.getElementById('minPrice').value) || 0;
+            const maxPrice = parseInt(document.getElementById('maxPrice').value) || 5000;
+            const selectedRatings = [];
+            document.querySelectorAll('.rating-filter:checked').forEach(cb => {
+                selectedRatings.push(parseInt(cb.value));
+            });
+            
+            const selectedShops = [];
+            document.querySelectorAll('.shop-filter-item.selected').forEach(item => {
+                selectedShops.push(item.getAttribute('data-shop-id'));
+            });
+            
+            let filteredProducts = PRODUCTS;
+            
+            // Price filter
+            filteredProducts = filteredProducts.filter(p => p.price >= minPrice && p.price <= maxPrice);
+            
+            // Rating filter
+            if (selectedRatings.length > 0) {
+                // Since we don't have actual ratings, we'll just show all products
+                // In real app, you would filter by actual product ratings
+            }
+            
+            // Shop filter
+            if (selectedShops.length > 0) {
+                filteredProducts = filteredProducts.filter(p => selectedShops.includes(p.shopId));
+            }
+            
+            renderProducts(filteredProducts);
+            closeEnhancedSearch();
+            showToast('Advanced filters applied');
+        }
+
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
 </body>
 </html>
