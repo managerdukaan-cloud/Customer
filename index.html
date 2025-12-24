@@ -2920,320 +2920,331 @@
         let SHOP_STATUS = null; // NEW: Store shop status
         let shopStatusListener = null; // NEW: Listener for shop status
 
-        // ==================== NEW: SHOP STATUS FUNCTIONS ====================
-        async function checkShopStatus() {
-            try {
-                // Get the shop ID from cart or products
-                let shopId = 'default_shop';
-                if (cart.length > 0) {
-                    shopId = cart[0].shopId;
-                } else if (PRODUCTS.length > 0) {
-                    shopId = PRODUCTS[0].shopId;
-                }
+        // ==================== UPDATED: SHOP STATUS FUNCTIONS ====================
+// Har product ke liye alag shop status check karega
+async function checkShopStatusForProduct(productId) {
+    try {
+        const product = PRODUCTS.find(p => p.id === productId);
+        if (!product) return 'open'; // Default if product not found
+        
+        const shopId = product.shopId;
+        const shopDoc = await db.collection('shops').doc(shopId).get();
+        
+        if (shopDoc.exists) {
+            const shopData = shopDoc.data();
+            return shopData.status || 'open';
+        }
+        return 'open'; // Default if shop not found
+    } catch (error) {
+        console.error('Error checking shop status:', error);
+        return 'open'; // Default on error
+    }
+}
+
+// Global shop status check (cart wale shop ke liye)
+async function checkShopStatus() {
+    try {
+        // Get the shop ID from cart or first product
+        let shopId = 'default_shop';
+        if (cart.length > 0) {
+            shopId = cart[0].shopId;
+        } else if (PRODUCTS.length > 0) {
+            shopId = PRODUCTS[0].shopId;
+        }
+        
+        const shopDoc = await db.collection('shops').doc(shopId).get();
+        if (shopDoc.exists) {
+            const shopData = shopDoc.data();
+            SHOP_STATUS = shopData.status || 'open';
+            SHOP_DATA = shopData;
+            
+            console.log('✅ Shop status loaded:', SHOP_STATUS);
+            
+            // Update UI based on shop status
+            updateUIForShopStatus();
+            
+            // Start real-time listener for shop status changes
+            setupShopStatusListener(shopId);
+            
+            return SHOP_STATUS;
+        }
+        return 'open';
+    } catch (error) {
+        console.error('Error checking shop status:', error);
+        return 'open';
+    }
+}
+
+function setupShopStatusListener(shopId) {
+    if (shopStatusListener) {
+        shopStatusListener();
+    }
+    
+    shopStatusListener = db.collection('shops').doc(shopId)
+        .onSnapshot((doc) => {
+            if (doc.exists) {
+                const shopData = doc.data();
+                const newStatus = shopData.status || 'open';
                 
-                const shopDoc = await db.collection('shops').doc(shopId).get();
-                if (shopDoc.exists) {
-                    const shopData = shopDoc.data();
-                    SHOP_STATUS = shopData.status || 'open'; // Assuming 'status' field exists
+                if (SHOP_STATUS !== newStatus) {
+                    console.log('🔄 Shop status changed:', SHOP_STATUS, '→', newStatus);
+                    SHOP_STATUS = newStatus;
                     SHOP_DATA = shopData;
                     
-                    console.log('✅ Shop status loaded:', SHOP_STATUS);
-                    
-                    // Update UI based on shop status
                     updateUIForShopStatus();
-                    
-                    // Start real-time listener for shop status changes
-                    setupShopStatusListener(shopId);
-                    
-                    return SHOP_STATUS;
+                    showShopStatusNotification(newStatus);
                 }
-                return 'open'; // Default to open if shop not found
-            } catch (error) {
-                console.error('Error checking shop status:', error);
-                return 'open';
             }
-        }
+        }, (error) => {
+            console.error('Error listening to shop status:', error);
+        });
+}
 
-        function setupShopStatusListener(shopId) {
-            // Remove existing listener if any
-            if (shopStatusListener) {
-                shopStatusListener();
-            }
+function updateUIForShopStatus() {
+    const notification = document.getElementById('shopStatusNotification');
+    const messageElement = document.getElementById('shopStatusMessage');
+    
+    if (!notification || !messageElement) return;
+    
+    notification.className = 'shop-status-notification';
+    
+    switch(SHOP_STATUS) {
+        case 'open':
+            notification.classList.add('shop-status-open');
+            messageElement.textContent = '🟢 Shop is Open - Accepting Orders';
+            notification.style.display = 'block';
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+            break;
             
-            // Setup real-time listener for shop status
-            shopStatusListener = db.collection('shops').doc(shopId)
-                .onSnapshot((doc) => {
-                    if (doc.exists) {
-                        const shopData = doc.data();
-                        const newStatus = shopData.status || 'open';
-                        
-                        if (SHOP_STATUS !== newStatus) {
-                            console.log('🔄 Shop status changed:', SHOP_STATUS, '→', newStatus);
-                            SHOP_STATUS = newStatus;
-                            SHOP_DATA = shopData;
-                            
-                            // Update UI based on new status
-                            updateUIForShopStatus();
-                            
-                            // Show notification about status change
-                            showShopStatusNotification(newStatus);
-                        }
-                    }
-                }, (error) => {
-                    console.error('Error listening to shop status:', error);
-                });
-        }
+        case 'busy':
+            notification.classList.add('shop-status-busy');
+            messageElement.textContent = '🟡 Shop is Busy - Accepting Orders';
+            notification.style.display = 'block';
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+            break;
+            
+        case 'closed':
+            notification.classList.add('shop-status-closed');
+            messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
+            notification.style.display = 'block';
+            break;
+            
+        case 'holiday':
+            notification.classList.add('shop-status-holiday');
+            messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
+            notification.style.display = 'block';
+            break;
+            
+        default:
+            notification.style.display = 'none';
+    }
+}
 
-        function updateUIForShopStatus() {
-            const notification = document.getElementById('shopStatusNotification');
-            const messageElement = document.getElementById('shopStatusMessage');
-            
-            if (!notification || !messageElement) return;
-            
-            notification.className = 'shop-status-notification';
-            
-            switch(SHOP_STATUS) {
-                case 'open':
-                    notification.classList.add('shop-status-open');
-                    messageElement.textContent = '🟢 Shop is Open - Accepting Orders';
-                    notification.style.display = 'block';
-                    setTimeout(() => {
-                        notification.style.display = 'none';
-                    }, 5000);
-                    break;
-                    
-                case 'busy':
-                    notification.classList.add('shop-status-busy');
-                    messageElement.textContent = '🟡 Shop is Busy - Accepting Orders';
-                    notification.style.display = 'block';
-                    setTimeout(() => {
-                        notification.style.display = 'none';
-                    }, 5000);
-                    break;
-                    
-                case 'closed':
-                    notification.classList.add('shop-status-closed');
-                    messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
-                    notification.style.display = 'block';
-                    break;
-                    
-                case 'holiday':
-                    notification.classList.add('shop-status-holiday');
-                    messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
-                    notification.style.display = 'block';
-                    break;
-                    
-                default:
-                    notification.style.display = 'none';
-            }
-            
-            // Update all product card buttons based on shop status
-            updateProductCardButtonsForShopStatus();
-        }
+// ==================== FIXED: PRODUCT CARD BUTTONS ====================
+// Har product ke liye uske specific shop ka status check karega
+function updateProductCardButtonForShopStatus(productId) {
+    const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
+    if (!productCard) return;
+    
+    const actionsDiv = productCard.querySelector('.card-actions');
+    if (!actionsDiv) return;
+    
+    const cartItem = cart.find(item => item.id === productId);
+    const quantity = cartItem ? cartItem.quantity : 0;
+    
+    // Yeh function async nahi hai, isliye initially "Add to Cart" show karega
+    // Actual check addToCart function mein hoga
+    if (quantity > 0) {
+        // Show quantity counter
+        actionsDiv.innerHTML = `
+            <div class="btn-quantity-card" data-product-id="${productId}">
+                <button class="quantity-btn-card" onclick="decreaseCartQuantity('${productId}')">-</button>
+                <span class="quantity-value-card">${quantity}</span>
+                <button class="quantity-btn-card" onclick="increaseCartQuantity('${productId}')">+</button>
+            </div>
+        `;
+    } else {
+        // Show Add to Cart button
+        actionsDiv.innerHTML = `
+            <button class="btn-add-cart" onclick="addToCart('${productId}')">
+                <i class="fas fa-shopping-cart"></i> Add to Cart
+            </button>
+        `;
+    }
+}
 
-        function updateProductCardButtonsForShopStatus() {
-            PRODUCTS.forEach(product => {
-                updateProductCardButtonForShopStatus(product.id);
-            });
-        }
+function updateProductCardButtonsForShopStatus() {
+    PRODUCTS.forEach(product => {
+        updateProductCardButtonForShopStatus(product.id);
+    });
+}
 
-        function updateProductCardButtonForShopStatus(productId) {
-            const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
-            if (!productCard) return;
+function showShopStatusNotification(status, shopName = 'This shop') {
+    const overlay = document.getElementById('shopStatusOverlay');
+    const icon = document.getElementById('shopStatusOverlayIcon');
+    const title = document.getElementById('shopStatusOverlayTitle');
+    const message = document.getElementById('shopStatusOverlayMessage');
+    
+    if (!overlay || !icon || !title || !message) return;
+    
+    icon.className = 'shop-status-icon';
+    
+    switch(status) {
+        case 'closed':
+            icon.classList.add('shop-closed-icon');
+            icon.innerHTML = '<i class="fas fa-store-slash"></i>';
+            title.textContent = 'Shop is Closed';
+            message.textContent = `${shopName} is currently closed and not accepting orders. Please try again later when the shop reopens.`;
+            break;
             
-            const actionsDiv = productCard.querySelector('.card-actions');
-            if (!actionsDiv) return;
+        case 'holiday':
+            icon.classList.add('shop-holiday-icon');
+            icon.innerHTML = '<i class="fas fa-umbrella-beach"></i>';
+            title.textContent = 'Shop is on Holiday';
+            message.textContent = `${shopName} is currently on holiday and will reopen soon. Please check back later.`;
+            break;
             
-            const cartItem = cart.find(item => item.id === productId);
-            const quantity = cartItem ? cartItem.quantity : 0;
-            
-            if (SHOP_STATUS === 'closed' || SHOP_STATUS === 'holiday') {
-                // Shop closed - show disabled button
-                if (quantity > 0) {
-                    // Keep quantity counter but disable buttons
-                    actionsDiv.innerHTML = `
-                        <div class="btn-quantity-card" style="background: #ccc; cursor: not-allowed;" data-product-id="${productId}">
-                            <button class="quantity-btn-card" style="background: rgba(255,255,255,0.5); cursor: not-allowed;" disabled>-</button>
-                            <span class="quantity-value-card">${quantity}</span>
-                            <button class="quantity-btn-card" style="background: rgba(255,255,255,0.5); cursor: not-allowed;" disabled>+</button>
-                        </div>
-                    `;
-                } else {
-                    actionsDiv.innerHTML = `
-                        <button class="btn-add-cart" style="background: #ccc; cursor: not-allowed;" disabled>
-                            <i class="fas fa-store-slash"></i> Shop Closed
-                        </button>
-                    `;
-                }
-            } else {
-                // Shop open or busy - show normal buttons
-                updateProductCardButton(productId);
-            }
-        }
-
-        function showShopStatusNotification(status) {
-            const overlay = document.getElementById('shopStatusOverlay');
-            const icon = document.getElementById('shopStatusOverlayIcon');
-            const title = document.getElementById('shopStatusOverlayTitle');
-            const message = document.getElementById('shopStatusOverlayMessage');
-            
-            if (!overlay || !icon || !title || !message) return;
-            
-            icon.className = 'shop-status-icon';
-            
-            switch(status) {
-                case 'closed':
-                    icon.classList.add('shop-closed-icon');
-                    icon.innerHTML = '<i class="fas fa-store-slash"></i>';
-                    title.textContent = 'Shop is Closed';
-                    message.textContent = 'This shop is currently closed and not accepting orders. Please try again later when the shop reopens.';
-                    break;
-                    
-                case 'holiday':
-                    icon.classList.add('shop-holiday-icon');
-                    icon.innerHTML = '<i class="fas fa-umbrella-beach"></i>';
-                    title.textContent = 'Shop is on Holiday';
-                    message.textContent = 'This shop is currently on holiday and will reopen soon. Please check back later.';
-                    break;
-                    
-                case 'open':
-                    icon.classList.add('shop-open-icon');
-                    icon.innerHTML = '<i class="fas fa-store"></i>';
-                    title.textContent = 'Shop is Now Open!';
-                    message.textContent = 'Great news! The shop is now open and accepting orders.';
-                    setTimeout(() => {
-                        overlay.style.display = 'none';
-                    }, 3000);
-                    return;
-                    
-                case 'busy':
-                    icon.classList.add('shop-busy-icon');
-                    icon.innerHTML = '<i class="fas fa-clock"></i>';
-                    title.textContent = 'Shop is Busy';
-                    message.textContent = 'The shop is currently busy but still accepting orders. Delivery might take longer than usual.';
-                    break;
-            }
-            
-            overlay.style.display = 'flex';
-        }
-
-        function closeShopStatusOverlay() {
-            const overlay = document.getElementById('shopStatusOverlay');
-            if (overlay) {
+        case 'open':
+            icon.classList.add('shop-open-icon');
+            icon.innerHTML = '<i class="fas fa-store"></i>';
+            title.textContent = 'Shop is Now Open!';
+            message.textContent = `Great news! ${shopName} is now open and accepting orders.`;
+            setTimeout(() => {
                 overlay.style.display = 'none';
-            }
-        }
-
-        function isShopAcceptingOrders() {
-            return SHOP_STATUS === 'open' || SHOP_STATUS === 'busy';
-        }
-
-        // ==================== UPDATED ADD TO CART FUNCTION ====================
-        async function addToCart(productId) {
-            try {
-                // Check shop status first
-                if (!isShopAcceptingOrders()) {
-                    showShopStatusNotification(SHOP_STATUS);
-                    return;
-                }
-                
-                const product = PRODUCTS.find(p => p.id === productId);
-                if (!product) return;
-                
-                // Check if cart already has items from different shop
-                if (cart.length > 0) {
-                    const firstShopId = cart[0].shopId;
-                    if (firstShopId !== product.shopId) {
-                        showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                        return;
-                    }
-                }
-                
-                const existingItem = cart.find(item => item.id === productId);
-                
-                if (existingItem) {
-                    existingItem.quantity += 1;
-                } else {
-                    cart.push({
-                        id: product.id,
-                        name: product.name,
-                        price: product.price,
-                        image: product.image,
-                        quantity: 1,
-                        shopId: product.shopId,
-                        shopName: product.shopName
-                    });
-                }
-                
-                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-                updateCartUI();
-                updateProductCardButton(productId);
-                showToast('Product added to cart!');
-                
-                // Load shop config when first item is added
-                if (cart.length === 1) {
-                    loadAndListenToShop();
-                    // Also check shop status
-                    checkShopStatus();
-                }
-                
-                // Load shop data for coupon validation
-                await loadShopData();
-                
-            } catch (error) {
-                console.error('Error adding to cart:', error);
-                showToast('Error adding product to cart');
-            }
-        }
-
-        // ==================== UPDATED ADD TO CART FROM DETAIL ====================
-        function addToCartFromDetail() {
-            if (!currentProductDetail) return;
+            }, 3000);
+            return;
             
-            // Check shop status first
-            if (!isShopAcceptingOrders()) {
-                showShopStatusNotification(SHOP_STATUS);
+        case 'busy':
+            icon.classList.add('shop-busy-icon');
+            icon.innerHTML = '<i class="fas fa-clock"></i>';
+            title.textContent = 'Shop is Busy';
+            message.textContent = `${shopName} is currently busy but still accepting orders. Delivery might take longer than usual.`;
+            break;
+    }
+    
+    overlay.style.display = 'flex';
+}
+
+function closeShopStatusOverlay() {
+    const overlay = document.getElementById('shopStatusOverlay');
+    if (overlay) {
+        overlay.style.display = 'none';
+    }
+}
+
+function isShopAcceptingOrders() {
+    return SHOP_STATUS === 'open' || SHOP_STATUS === 'busy';
+}
+
+// ==================== UPDATED ADD TO CART FUNCTION ====================
+async function addToCart(productId) {
+    try {
+        // Check specific shop status for this product
+        const shopStatus = await checkShopStatusForProduct(productId);
+        const product = PRODUCTS.find(p => p.id === productId);
+        const shopName = product ? product.shopName : 'This shop';
+        
+        if (shopStatus === 'closed' || shopStatus === 'holiday') {
+            showShopStatusNotification(shopStatus, shopName);
+            return;
+        }
+        
+        if (!product) return;
+        
+        // Check if cart already has items from different shop
+        if (cart.length > 0) {
+            const firstShopId = cart[0].shopId;
+            if (firstShopId !== product.shopId) {
+                showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
                 return;
             }
-            
-            const quantity = parseInt(document.getElementById('quantityValue').textContent);
-            const product = PRODUCTS.find(p => p.id === currentProductDetail.id);
-            
-            if (!product) return;
-            
-            // Check if cart already has items from different shop
-            if (cart.length > 0) {
-                const firstShopId = cart[0].shopId;
-                if (firstShopId !== product.shopId) {
-                    showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                    return;
-                }
-            }
-            
-            const existingItem = cart.find(item => item.id === product.id);
-            
-            if (existingItem) {
-                existingItem.quantity += quantity;
-            } else {
-                cart.push({
-                    id: product.id,
-                    name: product.name,
-                    price: product.price,
-                    image: product.image,
-                    quantity: quantity,
-                    shopId: product.shopId,
-                    shopName: product.shopName
-                });
-            }
-            
-            localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-            updateCartUI();
-            showToast('Product added to cart!');
-            
-            // Load shop data for coupon validation
-            loadShopData();
         }
+        
+        const existingItem = cart.find(item => item.id === productId);
+        
+        if (existingItem) {
+            existingItem.quantity += 1;
+        } else {
+            cart.push({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                quantity: 1,
+                shopId: product.shopId,
+                shopName: product.shopName
+            });
+        }
+        
+        localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+        updateCartUI();
+        updateProductCardButton(productId);
+        showToast('Product added to cart!');
+        
+        if (cart.length === 1) {
+            loadAndListenToShop();
+            checkShopStatus();
+        }
+        
+        await loadShopData();
+        
+    } catch (error) {
+        console.error('Error adding to cart:', error);
+        showToast('Error adding product to cart');
+    }
+}
 
+// ==================== UPDATED ADD TO CART FROM DETAIL ====================
+async function addToCartFromDetail() {
+    if (!currentProductDetail) return;
+    
+    // Check specific shop status for this product
+    const shopStatus = await checkShopStatusForProduct(currentProductDetail.id);
+    const shopName = currentProductDetail.shopName || 'This shop';
+    
+    if (shopStatus === 'closed' || shopStatus === 'holiday') {
+        showShopStatusNotification(shopStatus, shopName);
+        return;
+    }
+    
+    const quantity = parseInt(document.getElementById('quantityValue').textContent);
+    const product = PRODUCTS.find(p => p.id === currentProductDetail.id);
+    
+    if (!product) return;
+    
+    if (cart.length > 0) {
+        const firstShopId = cart[0].shopId;
+        if (firstShopId !== product.shopId) {
+            showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
+            return;
+        }
+    }
+    
+    const existingItem = cart.find(item => item.id === product.id);
+    
+    if (existingItem) {
+        existingItem.quantity += quantity;
+    } else {
+        cart.push({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            image: product.image,
+            quantity: quantity,
+            shopId: product.shopId,
+            shopName: product.shopName
+        });
+    }
+    
+    localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+    updateCartUI();
+    showToast('Product added to cart!');
+    loadShopData();
+}
         // ==================== UPDATED PLACE ORDER FUNCTION ====================
         async function placeOrder() {
             // Check shop status before placing order
