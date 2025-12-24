@@ -12,6 +12,22 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
     <style>
+        // ==================== CSS ADD KARO ====================
+// <style> section mein yeh add karo:
+/*
+.shop-status-badge {
+    position: absolute;
+    bottom: 70px;
+    left: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    z-index: 2;
+}
+*/
+        
         /* Add shop status notification style */
         .shop-status-notification {
             position: fixed;
@@ -3000,6 +3016,7 @@ function setupShopStatusListener(shopId) {
         });
 }
 
+// ==================== FIXED: UPDATE UI FUNCTION ====================
 function updateUIForShopStatus() {
     const notification = document.getElementById('shopStatusNotification');
     const messageElement = document.getElementById('shopStatusMessage');
@@ -3008,10 +3025,11 @@ function updateUIForShopStatus() {
     
     notification.className = 'shop-status-notification';
     
+    // YEH MESSAGE CHANGE KARO - SPECIFIC SHOP KA NAAM NA DIYE
     switch(SHOP_STATUS) {
         case 'open':
             notification.classList.add('shop-status-open');
-            messageElement.textContent = '🟢 Shop is Open - Accepting Orders';
+            messageElement.textContent = '🟢 Shops are Open - Start Shopping';
             notification.style.display = 'block';
             setTimeout(() => {
                 notification.style.display = 'none';
@@ -3020,7 +3038,7 @@ function updateUIForShopStatus() {
             
         case 'busy':
             notification.classList.add('shop-status-busy');
-            messageElement.textContent = '🟡 Shop is Busy - Accepting Orders';
+            messageElement.textContent = '🟡 Shops are Busy - Accepting Orders';
             notification.style.display = 'block';
             setTimeout(() => {
                 notification.style.display = 'none';
@@ -3029,14 +3047,15 @@ function updateUIForShopStatus() {
             
         case 'closed':
             notification.classList.add('shop-status-closed');
-            messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
-            notification.style.display = 'block';
+            // YEH MESSAGE HATA DO YA GENERIC RAKHO
+            // messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
+            notification.style.display = 'none'; // CLOSED STATUS HOME PAGE PAR NA DIKHAYE
             break;
             
         case 'holiday':
             notification.classList.add('shop-status-holiday');
-            messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
-            notification.style.display = 'block';
+            // messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
+            notification.style.display = 'none'; // HOLIDAY STATUS BHI NA DIKHAYE
             break;
             
         default:
@@ -3044,542 +3063,119 @@ function updateUIForShopStatus() {
     }
 }
 
-// ==================== FIXED: PRODUCT CARD BUTTONS ====================
-// Har product ke liye uske specific shop ka status check karega
-function updateProductCardButtonForShopStatus(productId) {
-    const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
-    if (!productCard) return;
-    
-    const actionsDiv = productCard.querySelector('.card-actions');
-    if (!actionsDiv) return;
-    
-    const cartItem = cart.find(item => item.id === productId);
-    const quantity = cartItem ? cartItem.quantity : 0;
-    
-    // Yeh function async nahi hai, isliye initially "Add to Cart" show karega
-    // Actual check addToCart function mein hoga
-    if (quantity > 0) {
-        // Show quantity counter
-        actionsDiv.innerHTML = `
-            <div class="btn-quantity-card" data-product-id="${productId}">
-                <button class="quantity-btn-card" onclick="decreaseCartQuantity('${productId}')">-</button>
-                <span class="quantity-value-card">${quantity}</span>
-                <button class="quantity-btn-card" onclick="increaseCartQuantity('${productId}')">+</button>
-            </div>
-        `;
-    } else {
-        // Show Add to Cart button
-        actionsDiv.innerHTML = `
-            <button class="btn-add-cart" onclick="addToCart('${productId}')">
-                <i class="fas fa-shopping-cart"></i> Add to Cart
-            </button>
-        `;
-    }
-}
-
-function updateProductCardButtonsForShopStatus() {
-    // YEH FUNCTION HATA DO - SAB PRODUCTS KE BUTTONS DISABLE NA KARE
-    // PRODUCTS.forEach(product => {
-    //     updateProductCardButtonForShopStatus(product.id);
-    // });
-    return; // Kuch mat karo
-}
-
-function showShopStatusNotification(status, shopName = 'This shop') {
-    const overlay = document.getElementById('shopStatusOverlay');
-    const icon = document.getElementById('shopStatusOverlayIcon');
-    const title = document.getElementById('shopStatusOverlayTitle');
-    const message = document.getElementById('shopStatusOverlayMessage');
-    
-    if (!overlay || !icon || !title || !message) return;
-    
-    icon.className = 'shop-status-icon';
-    
-    switch(status) {
-        case 'closed':
-            icon.classList.add('shop-closed-icon');
-            icon.innerHTML = '<i class="fas fa-store-slash"></i>';
-            title.textContent = `${shopName} is Closed`;
-            message.textContent = 'This shop is currently closed and not accepting orders. Please try again later when the shop reopens.';
-            break;
-            
-        case 'holiday':
-            icon.classList.add('shop-holiday-icon');
-            icon.innerHTML = '<i class="fas fa-umbrella-beach"></i>';
-            title.textContent = `${shopName} is on Holiday`;
-            message.textContent = 'This shop is currently on holiday and will reopen soon. Please check back later.';
-            break;
-            
-        case 'open':
-            icon.classList.add('shop-open-icon');
-            icon.innerHTML = '<i class="fas fa-store"></i>';
-            title.textContent = `${shopName} is Now Open!`;
-            message.textContent = 'Great news! The shop is now open and accepting orders.';
-            setTimeout(() => {
-                overlay.style.display = 'none';
-            }, 3000);
-            return;
-            
-        case 'busy':
-            icon.classList.add('shop-busy-icon');
-            icon.innerHTML = '<i class="fas fa-clock"></i>';
-            title.textContent = `${shopName} is Busy`;
-            message.textContent = 'The shop is currently busy but still accepting orders. Delivery might take longer than usual.';
-            break;
-    }
-    
-    overlay.style.display = 'flex';
-}
-
-function closeShopStatusOverlay() {
-    const overlay = document.getElementById('shopStatusOverlay');
-    if (overlay) {
-        overlay.style.display = 'none';
-    }
-}
-
-function isShopAcceptingOrders() {
-    // YEH FUNCTION SIRF CART WALE SHOP KA STATUS CHECK KARE
-    // HAR PRODUCT KA ALAG CHECK addToCart FUNCTION MEIN HOGA
-    return SHOP_STATUS === 'open' || SHOP_STATUS === 'busy';
-}
-// ==================== UPDATED ADD TO CART FUNCTION ====================
-async function addToCart(productId) {
+// ==================== NEW: PRODUCT-SPECIFIC STATUS DISPLAY ====================
+// हर product card के लिए उसकी shop का status check करेगा
+async function checkAndDisplayProductStatus(productId) {
     try {
-        // Check specific shop status for this product
-        const shopStatus = await checkShopStatusForProduct(productId);
         const product = PRODUCTS.find(p => p.id === productId);
-        const shopName = product ? product.shopName : 'This shop';
-        
-        if (shopStatus === 'closed' || shopStatus === 'holiday') {
-            showShopStatusNotification(shopStatus, shopName);
-            return;
-        }
-        
         if (!product) return;
         
-        // Check if cart already has items from different shop
-        if (cart.length > 0) {
-            const firstShopId = cart[0].shopId;
-            if (firstShopId !== product.shopId) {
-                showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-                return;
-            }
+        const shopStatus = await checkShopStatusForProduct(productId);
+        const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
+        
+        if (!productCard) return;
+        
+        // Product card के नीचे छोटा status badge add करो
+        let statusBadge = productCard.querySelector('.shop-status-badge');
+        if (!statusBadge) {
+            statusBadge = document.createElement('div');
+            statusBadge.className = 'shop-status-badge';
+            productCard.appendChild(statusBadge);
         }
         
-        const existingItem = cart.find(item => item.id === productId);
-        
-        if (existingItem) {
-            existingItem.quantity += 1;
-        } else {
-            cart.push({
-                id: product.id,
-                name: product.name,
-                price: product.price,
-                image: product.image,
-                quantity: 1,
-                shopId: product.shopId,
-                shopName: product.shopName
-            });
+        // Status ke according color और text
+        switch(shopStatus) {
+            case 'open':
+                statusBadge.innerHTML = '<span style="color: #10B981; font-size: 11px; font-weight: 600;">🟢 Open</span>';
+                break;
+            case 'busy':
+                statusBadge.innerHTML = '<span style="color: #F59E0B; font-size: 11px; font-weight: 600;">🟡 Busy</span>';
+                break;
+            case 'closed':
+                statusBadge.innerHTML = '<span style="color: #EF4444; font-size: 11px; font-weight: 600;">🔴 Closed</span>';
+                break;
+            case 'holiday':
+                statusBadge.innerHTML = '<span style="color: #8B5CF6; font-size: 11px; font-weight: 600;">🟣 Holiday</span>';
+                break;
+            default:
+                statusBadge.innerHTML = '';
         }
-        
-        localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-        updateCartUI();
-        updateProductCardButton(productId);
-        showToast('Product added to cart!');
-        
-        if (cart.length === 1) {
-            loadAndListenToShop();
-            checkShopStatus();
-        }
-        
-        await loadShopData();
         
     } catch (error) {
-        console.error('Error adding to cart:', error);
-        showToast('Error adding product to cart');
+        console.error('Error displaying product status:', error);
     }
 }
 
-// ==================== UPDATED ADD TO CART FROM DETAIL ====================
-async function addToCartFromDetail() {
-    if (!currentProductDetail) return;
+// ==================== UPDATED RENDER PRODUCTS ====================
+function renderProducts(products) {
+    const productGrid = document.getElementById('productGrid');
+    const emptyState = document.getElementById('empty');
     
-    // Check specific shop status for this product
-    const shopStatus = await checkShopStatusForProduct(currentProductDetail.id);
-    const shopName = currentProductDetail.shopName || 'This shop';
+    if (!productGrid) return;
+
+    productGrid.innerHTML = '';
     
-    if (shopStatus === 'closed' || shopStatus === 'holiday') {
-        showShopStatusNotification(shopStatus, shopName);
+    if (products.length === 0) {
+        if (emptyState) emptyState.style.display = 'block';
         return;
     }
     
-    const quantity = parseInt(document.getElementById('quantityValue').textContent);
-    const product = PRODUCTS.find(p => p.id === currentProductDetail.id);
+    if (emptyState) emptyState.style.display = 'none';
     
-    if (!product) return;
-    
-    if (cart.length > 0) {
-        const firstShopId = cart[0].shopId;
-        if (firstShopId !== product.shopId) {
-            showToast(`Cannot add items from different shops. Please complete your order from ${cart[0].shopName} first.`, 'warning');
-            return;
+    products.forEach(product => {
+        const shopName = product.shopName || 'Unknown Shop';
+        const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
+        const isInWishlist = wishlist.includes(product.id);
+        const cartItem = cart.find(item => item.id === product.id);
+        const quantity = cartItem ? cartItem.quantity : 0;
+        
+        const productCard = document.createElement('div');
+        productCard.className = 'product-card';
+        productCard.setAttribute('data-product-id', product.id);
+        
+        // NORMAL BUTTON - STATUS BADGE ALAG SE ADD HOGA
+        let actionButton = '';
+        if (quantity > 0) {
+            actionButton = `
+                <div class="btn-quantity-card" data-product-id="${product.id}">
+                    <button class="quantity-btn-card" onclick="decreaseCartQuantity('${product.id}')">-</button>
+                    <span class="quantity-value-card">${quantity}</span>
+                    <button class="quantity-btn-card" onclick="increaseCartQuantity('${product.id}')">+</button>
+                </div>
+            `;
+        } else {
+            actionButton = `
+                <button class="btn-add-cart" onclick="addToCart('${product.id}')">
+                    <i class="fas fa-shopping-cart"></i> Add to Cart
+                </button>
+            `;
         }
-    }
-    
-    const existingItem = cart.find(item => item.id === product.id);
-    
-    if (existingItem) {
-        existingItem.quantity += quantity;
-    } else {
-        cart.push({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            image: product.image,
-            quantity: quantity,
-            shopId: product.shopId,
-            shopName: product.shopName
-        });
-    }
-    
-    localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-    updateCartUI();
-    showToast('Product added to cart!');
-    loadShopData();
+        
+        productCard.innerHTML = `
+            <div class="shop-badge">${shopName}</div>
+            <button class="wishlist-btn ${isInWishlist ? 'active' : ''}" onclick="toggleWishlist('${product.id}')">
+                <i class="fas fa-heart"></i>
+            </button>
+            <img src="${product.image}" alt="${product.name}" class="product-image" onclick="showProductDetail('${product.id}')">
+            <h3 class="product-title" onclick="showProductDetail('${product.id}')">${product.name}</h3>
+            <p class="product-category">${product.category} • ${product.deliveryTime || '10-15 min'}</p>
+            <div class="product-price">
+                <span class="current-price">₹${product.price}</span>
+                ${product.mrp ? `<span class="original-price">₹${product.mrp}</span>` : ''}
+                ${discount > 0 ? `<span class="discount">${discount}% OFF</span>` : ''}
+            </div>
+            <div class="card-actions">
+                ${actionButton}
+            </div>
+        `;
+        productGrid.appendChild(productCard);
+        
+        // Har product के लिए उसकी shop का status check और display करो
+        setTimeout(() => {
+            checkAndDisplayProductStatus(product.id);
+        }, 100);
+    });
 }
-        // ==================== UPDATED PLACE ORDER FUNCTION ====================
-        async function placeOrder() {
-            // Check shop status before placing order
-            if (!isShopAcceptingOrders()) {
-                showToast(`Cannot place order. Shop is currently ${SHOP_STATUS}.`, 'error');
-                showShopStatusNotification(SHOP_STATUS);
-                return;
-            }
-            
-            if (!isOnline) {
-                showToast('Cannot place order while offline', 'error');
-                return;
-            }
-
-            try {
-                // Get selected payment method
-                const codRadio = document.getElementById('paymentMethodCod');
-                const upiRadio = document.getElementById('paymentMethodUpi');
-                
-                if (codRadio && codRadio.checked) {
-                    selectedPaymentMethod = 'cod';
-                } else if (upiRadio && upiRadio.checked) {
-                    selectedPaymentMethod = 'qr';
-                } else {
-                    // Default to COD if nothing selected
-                    selectedPaymentMethod = 'cod';
-                    if (codRadio) codRadio.checked = true;
-                }
-                
-                if (!selectedPaymentMethod) {
-                    showToast('Please select a payment method', 'error');
-                    return;
-                }
-                
-                // Get phone from selected address or input
-                let phone = '';
-                if (selectedAddress) {
-                    const address = addresses.find(addr => addr.id === selectedAddress);
-                    phone = address?.phone || '';
-                }
-                
-                // If no phone in address, check checkout form
-                if (!phone) {
-                    phone = document.getElementById('checkoutPhone')?.value?.trim() || '';
-                }
-                
-                // Phone is optional now, only validate if provided
-                if (phone && !validatePhoneNumber(phone)) {
-                    showToast('Please enter a valid phone number', 'error');
-                    return;
-                }
-                
-                if (cart.length === 0) {
-                    showToast('Your cart is empty', 'error');
-                    return;
-                }
-                
-                const user = auth.currentUser;
-                if (!user) {
-                    showToast('Please login to place order', 'error');
-                    return;
-                }
-                
-                showLoading(true);
-                
-                const addressData = addresses.find(addr => addr.isDefault) || addresses[0];
-                if (!addressData) {
-                    showToast('Please add a delivery address first', 'error');
-                    showLoading(false);
-                    return;
-                }
-                
-                // Use selected address or default
-                const selectedAddressData = addresses.find(addr => addr.id === selectedAddress) || addressData;
-                
-                const completeAddress = {
-                    id: selectedAddressData.id || generateId(),
-                    fullName: selectedAddressData.name || user.displayName || 'Customer',
-                    phone: phone || selectedAddressData.phone || '',
-                    details: selectedAddressData.address || 'Address not specified',
-                    city: selectedAddressData.city || 'City not specified',
-                    pincode: selectedAddressData.pincode || '000000',
-                    landmark: selectedAddressData.landmark || '',
-                    type: selectedAddressData.type || 'home',
-                    customerId: user.uid,
-                    customerName: user.displayName || 'Customer',
-                    customerEmail: user.email,
-                    customerPhone: phone || selectedAddressData.phone || ''
-                };
-                
-                const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                let discount = 0;
-                
-                if (appliedCoupon) {
-                    if (appliedCoupon.type === 'percentage') {
-                        discount = (subtotal * appliedCoupon.value) / 100;
-                    } else {
-                        discount = appliedCoupon.value;
-                    }
-                }
-                
-                const total = subtotal - discount;
-                
-                const orderItems = cart.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    image: item.image,
-                    shopId: item.shopId,
-                    shopName: item.shopName
-                }));
-                
-                const unifiedOrderId = 'ORD_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6).toUpperCase();
-                const orderData = {
-                    orderId: unifiedOrderId,
-                    id: unifiedOrderId,
-                    customerId: user.uid,
-                    customerName: user.displayName || 'Customer',
-                    customerEmail: user.email,
-                    phone: phone || selectedAddressData.phone || '',
-                    items: orderItems,
-                    subtotal: subtotal,
-                    discount: discount,
-                    total: total,
-                    address: completeAddress,
-                    status: 'pending',
-                    paymentMethod: selectedPaymentMethod,
-                    paymentStatus: selectedPaymentMethod === 'qr' ? 'pending' : 'pending',
-                    paymentUTR: selectedPaymentMethod === 'qr' ? qrUTR : null,
-                    shopId: cart[0]?.shopId || 'default_shop',
-                    shopName: cart[0]?.shopName || 'Default Shop',
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    appliedCoupon: appliedCoupon ? appliedCoupon.code : null
-                };
-                
-                const docRef = await db.collection('orders').add(orderData);
-                console.log('✅ Order created:', docRef.id);
-                
-                // Clear cart
-                cart = [];
-                localStorage.setItem('dukaan_cart', JSON.stringify(cart));
-                updateCartUI();
-                appliedCoupon = null;
-                qrUTR = null; // Reset UTR
-                
-                // Safely clear coupon fields if they exist
-                const couponCodeInput = document.getElementById('couponCode');
-                const couponMessageEl = document.getElementById('couponMessage');
-                if (couponCodeInput && couponCodeInput.value !== undefined) {
-                    couponCodeInput.value = '';
-                }
-                if (couponMessageEl) {
-                    couponMessageEl.textContent = '';
-                }
-                
-                showLoading(false);
-                showToast(`✅ Order placed successfully! Order ID: ${unifiedOrderId}`, 'success');
-                closeBottomSheet();
-                
-                // Send push notification to shopkeeper
-                sendOrderNotificationToShopkeeper(orderData);
-                
-                setTimeout(() => {
-                    navigateToPage('orders');
-                }, 2000);
-                
-            } catch (error) {
-                console.error('❌ Error placing order:', error);
-                showLoading(false);
-                showToast('Error placing order: ' + error.message, 'error');
-            }
-        }
-
-        // ==================== UPDATED OPEN BOTTOM SHEET ====================
-        function openBottomSheet() {
-            if (cart.length === 0) {
-                showToast('Your cart is empty');
-                return;
-            }
-
-            // Check shop status before opening cart
-            if (!isShopAcceptingOrders()) {
-                showToast(`Cannot proceed with order. Shop is currently ${SHOP_STATUS}.`, 'error');
-                showShopStatusNotification(SHOP_STATUS);
-                return;
-            }
-
-            isBottomSheetOpen = true;
-            document.getElementById('bsheet').classList.add('open');
-            
-            // Ensure shop config is loaded
-            loadAndListenToShop();
-            
-            // Setup payment selection
-            setupPaymentSelection();
-            
-            updateOrderSummary();
-            
-            if (!selectedAddress && addresses.length > 0) {
-                selectedAddress = addresses.find(addr => addr.isDefault)?.id || addresses[0].id;
-                fillCheckoutForm(addresses.find(addr => addr.id === selectedAddress));
-            }
-            renderAddresses();
-            
-            // Update coupon section when bottom sheet opens
-            updateCouponSection();
-        }
-
-        // ==================== UPDATED PRODUCT CARD BUTTONS ====================
-        function updateProductCardButton(productId) {
-            const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
-            if (!productCard) return;
-            
-            const cartItem = cart.find(item => item.id === productId);
-            const quantity = cartItem ? cartItem.quantity : 0;
-            
-            const actionsDiv = productCard.querySelector('.card-actions');
-            if (!actionsDiv) return;
-            
-            // Check shop status
-            if (!isShopAcceptingOrders()) {
-                updateProductCardButtonForShopStatus(productId);
-                return;
-            }
-            
-            if (quantity > 0) {
-                // Show quantity counter
-                actionsDiv.innerHTML = `
-                    <div class="btn-quantity-card" data-product-id="${productId}">
-                        <button class="quantity-btn-card" onclick="decreaseCartQuantity('${productId}')">-</button>
-                        <span class="quantity-value-card">${quantity}</span>
-                        <button class="quantity-btn-card" onclick="increaseCartQuantity('${productId}')">+</button>
-                    </div>
-                `;
-            } else {
-                // Show Add to Cart button
-                actionsDiv.innerHTML = `
-                    <button class="btn-add-cart" onclick="addToCart('${productId}')">
-                        <i class="fas fa-shopping-cart"></i> Add to Cart
-                    </button>
-                `;
-            }
-        }
-
-        // ==================== UPDATED RENDER PRODUCTS ====================
-        function renderProducts(products) {
-            const productGrid = document.getElementById('productGrid');
-            const emptyState = document.getElementById('empty');
-            
-            if (!productGrid) return;
-
-            productGrid.innerHTML = '';
-            
-            if (products.length === 0) {
-                if (emptyState) emptyState.style.display = 'block';
-                return;
-            }
-            
-            if (emptyState) emptyState.style.display = 'none';
-            
-            products.forEach(product => {
-                const shopName = product.shopName || 'Unknown Shop';
-                const discount = product.mrp ? Math.round(((product.mrp - product.price) / product.mrp) * 100) : 0;
-                const isInWishlist = wishlist.includes(product.id);
-                const cartItem = cart.find(item => item.id === product.id);
-                const quantity = cartItem ? cartItem.quantity : 0;
-                
-                const productCard = document.createElement('div');
-                productCard.className = 'product-card';
-                productCard.setAttribute('data-product-id', product.id);
-                
-                let actionButton = '';
-                
-                // Check shop status to determine button display
-                if (!isShopAcceptingOrders()) {
-                    // Shop closed
-                    if (quantity > 0) {
-                        actionButton = `
-                            <div class="btn-quantity-card" style="background: #ccc; cursor: not-allowed;" data-product-id="${product.id}">
-                                <button class="quantity-btn-card" style="background: rgba(255,255,255,0.5); cursor: not-allowed;" disabled>-</button>
-                                <span class="quantity-value-card">${quantity}</span>
-                                <button class="quantity-btn-card" style="background: rgba(255,255,255,0.5); cursor: not-allowed;" disabled>+</button>
-                            </div>
-                        `;
-                    } else {
-                        actionButton = `
-                            <button class="btn-add-cart" style="background: #ccc; cursor: not-allowed;" disabled>
-                                <i class="fas fa-store-slash"></i> Shop Closed
-                            </button>
-                        `;
-                    }
-                } else {
-                    // Shop open or busy
-                    if (quantity > 0) {
-                        actionButton = `
-                            <div class="btn-quantity-card" data-product-id="${product.id}">
-                                <button class="quantity-btn-card" onclick="decreaseCartQuantity('${product.id}')">-</button>
-                                <span class="quantity-value-card">${quantity}</span>
-                                <button class="quantity-btn-card" onclick="increaseCartQuantity('${product.id}')">+</button>
-                            </div>
-                        `;
-                    } else {
-                        actionButton = `
-                            <button class="btn-add-cart" onclick="addToCart('${product.id}')">
-                                <i class="fas fa-shopping-cart"></i> Add to Cart
-                            </button>
-                        `;
-                    }
-                }
-                
-                productCard.innerHTML = `
-                    <div class="shop-badge">${shopName}</div>
-                    <button class="wishlist-btn ${isInWishlist ? 'active' : ''}" onclick="toggleWishlist('${product.id}')">
-                        <i class="fas fa-heart"></i>
-                    </button>
-                    <img src="${product.image}" alt="${product.name}" class="product-image" onclick="showProductDetail('${product.id}')">
-                    <h3 class="product-title" onclick="showProductDetail('${product.id}')">${product.name}</h3>
-                    <p class="product-category">${product.category} • ${product.deliveryTime || '10-15 min'}</p>
-                    <div class="product-price">
-                        <span class="current-price">₹${product.price}</span>
-                        ${product.mrp ? `<span class="original-price">₹${product.mrp}</span>` : ''}
-                        ${discount > 0 ? `<span class="discount">${discount}% OFF</span>` : ''}
-                    </div>
-                    <div class="card-actions">
-                        ${actionButton}
-                    </div>
-                `;
-                productGrid.appendChild(productCard);
-            });
-        }
 
         // ==================== UPDATED INIT FUNCTION ====================
         function initApp() {
