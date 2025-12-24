@@ -3078,9 +3078,11 @@ function updateProductCardButtonForShopStatus(productId) {
 }
 
 function updateProductCardButtonsForShopStatus() {
-    PRODUCTS.forEach(product => {
-        updateProductCardButtonForShopStatus(product.id);
-    });
+    // YEH FUNCTION HATA DO - SAB PRODUCTS KE BUTTONS DISABLE NA KARE
+    // PRODUCTS.forEach(product => {
+    //     updateProductCardButtonForShopStatus(product.id);
+    // });
+    return; // Kuch mat karo
 }
 
 function showShopStatusNotification(status, shopName = 'This shop') {
@@ -3097,22 +3099,22 @@ function showShopStatusNotification(status, shopName = 'This shop') {
         case 'closed':
             icon.classList.add('shop-closed-icon');
             icon.innerHTML = '<i class="fas fa-store-slash"></i>';
-            title.textContent = 'Shop is Closed';
-            message.textContent = `${shopName} is currently closed and not accepting orders. Please try again later when the shop reopens.`;
+            title.textContent = `${shopName} is Closed`;
+            message.textContent = 'This shop is currently closed and not accepting orders. Please try again later when the shop reopens.';
             break;
             
         case 'holiday':
             icon.classList.add('shop-holiday-icon');
             icon.innerHTML = '<i class="fas fa-umbrella-beach"></i>';
-            title.textContent = 'Shop is on Holiday';
-            message.textContent = `${shopName} is currently on holiday and will reopen soon. Please check back later.`;
+            title.textContent = `${shopName} is on Holiday`;
+            message.textContent = 'This shop is currently on holiday and will reopen soon. Please check back later.';
             break;
             
         case 'open':
             icon.classList.add('shop-open-icon');
             icon.innerHTML = '<i class="fas fa-store"></i>';
-            title.textContent = 'Shop is Now Open!';
-            message.textContent = `Great news! ${shopName} is now open and accepting orders.`;
+            title.textContent = `${shopName} is Now Open!`;
+            message.textContent = 'Great news! The shop is now open and accepting orders.';
             setTimeout(() => {
                 overlay.style.display = 'none';
             }, 3000);
@@ -3121,8 +3123,8 @@ function showShopStatusNotification(status, shopName = 'This shop') {
         case 'busy':
             icon.classList.add('shop-busy-icon');
             icon.innerHTML = '<i class="fas fa-clock"></i>';
-            title.textContent = 'Shop is Busy';
-            message.textContent = `${shopName} is currently busy but still accepting orders. Delivery might take longer than usual.`;
+            title.textContent = `${shopName} is Busy`;
+            message.textContent = 'The shop is currently busy but still accepting orders. Delivery might take longer than usual.';
             break;
     }
     
@@ -3137,9 +3139,10 @@ function closeShopStatusOverlay() {
 }
 
 function isShopAcceptingOrders() {
+    // YEH FUNCTION SIRF CART WALE SHOP KA STATUS CHECK KARE
+    // HAR PRODUCT KA ALAG CHECK addToCart FUNCTION MEIN HOGA
     return SHOP_STATUS === 'open' || SHOP_STATUS === 'busy';
 }
-
 // ==================== UPDATED ADD TO CART FUNCTION ====================
 async function addToCart(productId) {
     try {
