@@ -6914,42 +6914,42 @@ function setupPaymentSelection() {
 }
 
         function showSearchResults(products) {
-            const searchResults = document.getElementById('searchResults');
-            searchResults.innerHTML = '';
-            
-            if (products.length === 0) {
-                searchResults.style.display = 'none';
-                return;
-            }
-            
-            const limitedResults = products.slice(0, 5);
-            
-            limitedResults.forEach(product => {
-                const searchItem = document.createElement('div');
-                searchItem.className = 'search-result-item';
-                searchItem.innerHTML = `
-                    <img src="${product.image}" alt="${product.name}" class="search-result-image">
-                    <div class="search-result-info">
-                        <div class="search-result-name">${product.name}</div>
-                        <div class="search-result-category">${product.category} • ${product.shopName}</div>
-                    </div>
-                    <div class="search-result-price">₹${product.price}</div>
-                `;
-                searchItem.addEventListener('click', () => {
-                    document.getElementById('search').value = product.name;
-                    showProductDetail(product.id);
-                    searchResults.style.display = 'none';
-                });
-                searchResults.appendChild(searchItem);
-            });
-            
-            searchResults.style.display = 'block';
-        }
-
-        // Start app when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            initApp();
+    const searchResults = document.getElementById('searchResults');
+    searchResults.innerHTML = '';
+    
+    if (products.length === 0) {
+        searchResults.style.display = 'none';
+        return;
+    }
+    
+    const limitedResults = products.slice(0, 5);
+    
+    limitedResults.forEach(product => {
+        const searchItem = document.createElement('div');
+        searchItem.className = 'search-result-item';
+        searchItem.innerHTML = `
+            <img src="${product.image}" alt="${product.name}" class="search-result-image">
+            <div class="search-result-info">
+                <div class="search-result-name">${product.name}</div>
+                <div class="search-result-category">${product.category} • ${product.shopName}</div>
+            </div>
+            <div class="search-result-price">₹${product.price}</div>
+        `;
+        searchItem.addEventListener('click', () => {
+            document.getElementById('search').value = product.name;
+            showProductDetail(product.id);
+            searchResults.style.display = 'none';
         });
+        searchResults.appendChild(searchItem);
+    });
+    
+    searchResults.style.display = 'block';
+}
+
+// Start app when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initApp();
+});
     </script>
 </body>
 </html>
