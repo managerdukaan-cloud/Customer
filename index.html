@@ -2936,6 +2936,108 @@
         let SHOP_STATUS = null; // NEW: Store shop status
         let shopStatusListener = null; // NEW: Listener for shop status
 
+                // ==================== MISSING FUNCTION: isShopAcceptingOrders ====================
+        function isShopAcceptingOrders(productId = null) {
+            if (productId) {
+                // Check specific product's shop status
+                const product = PRODUCTS.find(p => p.id === productId);
+                if (!product) return SHOP_STATUS !== 'closed' && SHOP_STATUS !== 'holiday';
+                
+                // We'll check the product's shop status directly
+                const productCard = document.querySelector(`.product-card[data-product-id="${productId}"]`);
+                if (productCard) {
+                    const statusBadge = productCard.querySelector('.shop-status-badge');
+                    if (statusBadge) {
+                        const statusText = statusBadge.textContent || '';
+                        if (statusText.includes('Closed') || statusText.includes('Holiday')) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            
+            // Check global shop status
+            return SHOP_STATUS !== 'closed' && SHOP_STATUS !== 'holiday';
+        }
+        
+        // ==================== MISSING FUNCTION: showShopStatusNotification ====================
+        function showShopStatusNotification(status) {
+            const notification = document.getElementById('shopStatusNotification');
+            const messageElement = document.getElementById('shopStatusMessage');
+            
+            if (!notification || !messageElement) return;
+            
+            notification.className = 'shop-status-notification';
+            
+            switch(status) {
+                case 'open':
+                    notification.classList.add('shop-status-open');
+                    messageElement.textContent = '🟢 Shop is Open - Accepting Orders';
+                    break;
+                case 'busy':
+                    notification.classList.add('shop-status-busy');
+                    messageElement.textContent = '🟡 Shop is Busy - Accepting Orders';
+                    break;
+                case 'closed':
+                    notification.classList.add('shop-status-closed');
+                    messageElement.textContent = '🔴 Shop is Closed - Not Accepting Orders';
+                    break;
+                case 'holiday':
+                    notification.classList.add('shop-status-holiday');
+                    messageElement.textContent = '🟣 Shop is on Holiday - Not Accepting Orders';
+                    break;
+            }
+            
+            notification.style.display = 'block';
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+        }
+        
+        // ==================== YOUR EXISTING addToCart FUNCTION ====================
+        function addToCart(productId) {
+            // Check if the shop is accepting orders
+            if (!isShopAcceptingOrders(productId)) {
+                showShopStatusNotification(SHOP_STATUS);
+                showToast('Cannot add to cart. Shop is currently ' + SHOP_STATUS + '.', 'error');
+                return;
+            }
+            
+            const product = PRODUCTS.find(p => p.id === productId);
+            if (!product) return;
+            
+            // Check stock
+            if (product.stock <= 0) {
+                showToast('Product is out of stock', 'error');
+                return;
+            }
+            
+            const existingItem = cart.find(item => item.id === productId);
+            
+            if (existingItem) {
+                if (existingItem.quantity >= 10) {
+                    showToast('Maximum 10 items allowed');
+                    return;
+                }
+                existingItem.quantity += 1;
+                showToast('Quantity increased');
+            } else {
+                cart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    shopId: product.shopId,
+                    shopName: product.shopName || 'Unknown Shop',
+                    quantity: 1
+                });
+                showToast('Added to cart');
+            }
+            
+            localStorage.setItem('dukaan_cart', JSON.stringify(cart));
+            updateCartUI();
+            updateProductCardButton(productId);
+        }
+
         // ==================== UPDATED: Add to Cart function with shop status check ====================
 function addToCart(productId) {
     // Check if the shop is accepting orders
