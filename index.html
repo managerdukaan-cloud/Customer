@@ -12,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js"></script>
     <style>
+        /* All your existing CSS styles remain exactly the same */
         .shop-status-badge {
             position: absolute;
             bottom: 80px;
@@ -285,6 +286,7 @@
         .payment-methods { margin: 20px 0; }
         .payment-option { display: flex; align-items: center; gap: 12px; padding: 15px; border: 2px solid var(--border); border-radius: 10px; margin-bottom: 10px; cursor: pointer; transition: all 0.3s ease; }
         .payment-option.selected { border-color: var(--accent); background: rgba(58, 142, 246, 0.05); }
+        .payment-option.disabled { opacity: 0.5; cursor: not-allowed; }
         .payment-icon { width: 40px; height: 40px; background: var(--neutral); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
         .payment-info { flex: 1; }
         .payment-title { font-weight: 600; margin-bottom: 4px; }
@@ -2926,10 +2928,302 @@
         let SHOP_COUPONS = [];
         let SHOP_DATA = null;
         let qrUTR = null;
+        let currentShopId = null;
+        let shopListener = null;
         
         // ==================== FIXED: Store shop status for each product ====================
         let PRODUCT_SHOP_STATUS = {}; // Store each product's shop status
         let shopStatusListener = null;
+
+        // ==================== NEW: Start real-time shop listener ====================
+        function startShopRealTimeListener(shopId) {
+            console.log("🔔 Starting real-time listener for shop:", shopId);
+            
+            // Stop previous listener if exists
+            if (shopListener) {
+                shopListener();
+            }
+            
+            if (!shopId) return;
+            
+            currentShopId = shopId;
+            
+            // Listen to shop document changes
+            shopListener = db.collection('shops').doc(shopId).onSnapshot((doc) => {
+                if (doc.exists) {
+                    const shopData = doc.data();
+                    console.log("🔄 Shop data updated in real-time:", shopData);
+                    
+                    // Update shop data
+                    SHOP_DATA = shopData;
+                    
+                    // Update payment methods based on shop settings
+                    updatePaymentMethodsFromShopData(shopData);
+                    
+                    // Update coupon section based on shop settings
+                    updateCouponSectionFromShopData(shopData);
+                }
+            }, (error) => {
+                console.error("❌ Error listening to shop updates:", error);
+            });
+        }
+
+        // ==================== FIXED: Update payment methods from shop data ====================
+        function updatePaymentMethodsFromShopData(shopData) {
+            console.log("💳 Updating payment methods from shop data:", shopData);
+            
+            if (!shopData) return;
+            
+            // Extract payment settings
+            const paymentMethods = shopData.paymentMethods || {};
+            const upiSettings = shopData.upiSettings || {};
+            const settings = shopData.settings || {};
+            
+            // Determine if COD is enabled
+            let codEnabled = true; // Default to enabled
+            if (paymentMethods.cash === false) codEnabled = false;
+            if (upiSettings.acceptedMethods && upiSettings.acceptedMethods.cash === false) codEnabled = false;
+            if (settings.paymentMethods && settings.paymentMethods.cash === false) codEnabled = false;
+            
+            // Determine if UPI/QR is enabled
+            let upiEnabled = true; // Default to enabled
+            if (paymentMethods.upi === false) upiEnabled = false;
+            if (upiSettings.acceptedMethods && upiSettings.acceptedMethods.upi === false) upiEnabled = false;
+            if (settings.paymentMethods && settings.paymentMethods.upi === false) upiEnabled = false;
+            
+            // Also check if UPI ID or QR code is available
+            const hasUpiId = shopData.upiId || (upiSettings && upiSettings.upiId) || (settings && settings.upiId);
+            const hasQrCode = shopData.qrCodeImage || (upiSettings && upiSettings.qrCodeImage) || (settings && settings.qrCodeImage);
+            
+            if (!hasUpiId && !hasQrCode) {
+                upiEnabled = false;
+            }
+            
+            console.log("💰 Payment status - COD:", codEnabled, "UPI:", upiEnabled);
+            
+            // Update UI
+            updatePaymentOptionsUI(codEnabled, upiEnabled, shopData);
+        }
+
+        // ==================== FIXED: Update payment options UI ====================
+        function updatePaymentOptionsUI(codEnabled, upiEnabled, shopData) {
+            const codOption = document.getElementById('codPaymentOption');
+            const upiOption = document.getElementById('upiPaymentOption');
+            const placeOrderBtn = document.getElementById('placeOrderBtn');
+            
+            // Update COD option
+            if (codOption) {
+                const codRadio = codOption.querySelector('input[type="radio"]');
+                
+                if (codEnabled) {
+                    codOption.classList.remove('disabled');
+                    codOption.style.opacity = '1';
+                    codOption.style.cursor = 'pointer';
+                    if (codRadio) codRadio.disabled = false;
+                    
+                    // Update inner HTML properly
+                    codOption.innerHTML = `
+                        <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                        <div class="payment-info">
+                            <div class="payment-title">Cash on Delivery</div>
+                            <div class="payment-desc">Pay when you receive your order</div>
+                        </div>
+                        <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" ${selectedPaymentMethod === 'cod' ? 'checked' : ''}>
+                    `;
+                    
+                    // Add event listener
+                    codOption.onclick = () => {
+                        if (!codRadio.disabled) {
+                            codRadio.checked = true;
+                            selectPaymentMethod('cod');
+                        }
+                    };
+                } else {
+                    codOption.classList.add('disabled');
+                    codOption.style.opacity = '0.5';
+                    codOption.style.cursor = 'not-allowed';
+                    if (codRadio) codRadio.disabled = true;
+                    
+                    // Update inner HTML to show disabled state
+                    codOption.innerHTML = `
+                        <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
+                        <div class="payment-info">
+                            <div class="payment-title" style="color: #999;">Cash on Delivery</div>
+                            <div class="payment-desc" style="color: #FF6B6B;">This payment method is currently unavailable</div>
+                        </div>
+                        <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" disabled>
+                    `;
+                    
+                    // If COD was selected but is now disabled, switch to UPI if available
+                    if (selectedPaymentMethod === 'cod' && upiEnabled) {
+                        const upiRadio = document.getElementById('paymentMethodUpi');
+                        if (upiRadio && !upiRadio.disabled) {
+                            upiRadio.checked = true;
+                            selectedPaymentMethod = 'qr';
+                        }
+                    }
+                }
+            }
+            
+            // Update UPI option
+            if (upiOption) {
+                const upiRadio = upiOption.querySelector('input[type="radio"]');
+                
+                if (upiEnabled) {
+                    upiOption.classList.remove('disabled');
+                    upiOption.style.opacity = '1';
+                    upiOption.style.cursor = 'pointer';
+                    if (upiRadio) upiRadio.disabled = false;
+                    
+                    // Extract UPI ID for display
+                    let upiId = "";
+                    if (shopData.upiId) {
+                        upiId = shopData.upiId;
+                    } else if (shopData.upiSettings && shopData.upiSettings.upiId) {
+                        upiId = shopData.upiSettings.upiId;
+                    } else if (shopData.settings && shopData.settings.upiId) {
+                        upiId = shopData.settings.upiId;
+                    }
+                    
+                    // Update inner HTML properly
+                    upiOption.innerHTML = `
+                        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                        <div class="payment-info">
+                            <div class="payment-title">QR Code Payment</div>
+                            <div class="payment-desc">Scan QR code to pay instantly</div>
+                        </div>
+                        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" ${selectedPaymentMethod === 'qr' ? 'checked' : ''}>
+                    `;
+                    
+                    // Update UPI ID display
+                    const upiElement = document.getElementById('displayUpiId');
+                    if (upiElement && upiId) {
+                        upiElement.textContent = upiId;
+                    }
+                    
+                    // Add event listener
+                    upiOption.onclick = () => {
+                        if (!upiRadio.disabled) {
+                            upiRadio.checked = true;
+                            selectPaymentMethod('qr');
+                        }
+                    };
+                } else {
+                    upiOption.classList.add('disabled');
+                    upiOption.style.opacity = '0.5';
+                    upiOption.style.cursor = 'not-allowed';
+                    if (upiRadio) upiRadio.disabled = true;
+                    
+                    // Update inner HTML to show disabled state
+                    upiOption.innerHTML = `
+                        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
+                        <div class="payment-info">
+                            <div class="payment-title" style="color: #999;">QR Code Payment</div>
+                            <div class="payment-desc" style="color: #FF6B6B;">This payment method is currently unavailable</div>
+                        </div>
+                        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" disabled>
+                    `;
+                    
+                    // If UPI was selected but is now disabled, switch to COD if available
+                    if (selectedPaymentMethod === 'qr' && codEnabled) {
+                        const codRadio = document.getElementById('paymentMethodCod');
+                        if (codRadio && !codRadio.disabled) {
+                            codRadio.checked = true;
+                            selectedPaymentMethod = 'cod';
+                        }
+                    }
+                }
+            }
+            
+            // Enable/disable place order button
+            if (placeOrderBtn) {
+                const hasEnabledPaymentMethod = codEnabled || upiEnabled;
+                placeOrderBtn.disabled = cart.length === 0 || !hasEnabledPaymentMethod;
+            }
+            
+            console.log("✅ Payment options UI updated");
+        }
+
+        // ==================== FIXED: Update coupon section from shop data ====================
+        function updateCouponSectionFromShopData(shopData) {
+            console.log("🎫 Updating coupon section from shop data:", shopData);
+            
+            const couponSection = document.querySelector('.coupon-section');
+            const applyCouponBtn = document.getElementById('applyCouponBtn');
+            const couponCodeInput = document.getElementById('couponCode');
+            const couponLoginRequired = document.getElementById('couponLoginRequired');
+            
+            if (!couponSection) return;
+            
+            // Check if coupons are enabled in shop settings
+            const couponsEnabled = shopData.couponEnabled !== false; // Default to true if not specified
+            const hasCouponSettings = shopData.couponSettings || shopData.couponCode;
+            
+            console.log("🎫 Coupon status - Enabled:", couponsEnabled, "Has settings:", hasCouponSettings);
+            
+            if (!couponsEnabled) {
+                // Coupons disabled by shopkeeper
+                couponSection.innerHTML = `
+                    <div class="text-center text-muted p-3">
+                        <i class="fas fa-tag" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <p>Coupons are currently disabled by the shopkeeper</p>
+                    </div>
+                `;
+                
+                if (applyCouponBtn) applyCouponBtn.disabled = true;
+                if (couponCodeInput) couponCodeInput.disabled = true;
+                if (couponLoginRequired) couponLoginRequired.style.display = 'none';
+                
+                return;
+            }
+            
+            if (!hasCouponSettings) {
+                // No coupons configured
+                couponSection.innerHTML = `
+                    <div class="text-center text-muted p-3">
+                        <i class="fas fa-tag" style="font-size: 24px; margin-bottom: 10px;"></i>
+                        <p>No coupons available at the moment</p>
+                    </div>
+                `;
+                
+                if (applyCouponBtn) applyCouponBtn.disabled = true;
+                if (couponCodeInput) couponCodeInput.disabled = true;
+                if (couponLoginRequired) couponLoginRequired.style.display = 'none';
+                
+                return;
+            }
+            
+            // Coupons are enabled and available
+            // Restore original coupon section HTML if it was replaced
+            if (!couponSection.querySelector('.coupon-input-group')) {
+                couponSection.innerHTML = `
+                    <div class="coupon-input-group">
+                        <input type="text" id="couponCode" class="coupon-input" placeholder="Enter coupon code">
+                        <button id="applyCouponBtn" class="btn-apply-coupon">Apply</button>
+                    </div>
+                    <div id="couponMessage"></div>
+                    <div id="couponLoginRequired" class="coupon-login-required" style="display: none;">
+                        Please login to apply coupons
+                    </div>
+                `;
+                
+                // Re-attach event listeners
+                document.getElementById('applyCouponBtn').addEventListener('click', applyCoupon);
+            }
+            
+            // Enable/disable based on login status
+            if (currentUser) {
+                if (couponCodeInput) couponCodeInput.disabled = false;
+                if (applyCouponBtn) applyCouponBtn.disabled = false;
+                if (couponLoginRequired) couponLoginRequired.style.display = 'none';
+            } else {
+                if (couponCodeInput) couponCodeInput.disabled = true;
+                if (applyCouponBtn) applyCouponBtn.disabled = true;
+                if (couponLoginRequired) couponLoginRequired.style.display = 'block';
+            }
+            
+            console.log("✅ Coupon section updated");
+        }
 
         // ==================== FIXED: CART FUNCTIONS ====================
         function updateProductCardButton(productId) {
@@ -3790,10 +4084,11 @@
         }
 
         let currentShopListener = null;
-        let currentShopId = null;
 
         async function loadShopDataForPayment(shopId) {
             try {
+                console.log("🛍️ Loading shop data for payment, shopId:", shopId);
+                
                 const shopDoc = await db.collection('shops').doc(shopId).get();
                 if (shopDoc.exists) {
                     const shopData = shopDoc.data();
@@ -3806,244 +4101,26 @@
                         paymentMethods: shopData.paymentMethods
                     };
                     
-                    updatePaymentSectionUI(shopData);
+                    // Update payment UI immediately
+                    updatePaymentMethodsFromShopData(shopData);
+                    
+                    // Update coupon UI immediately
+                    updateCouponSectionFromShopData(shopData);
+                    
+                    // ✅ YAHAN PAR NAYA FUNCTION ADD KAREN:
+                    loadAndDisplayQRCode(shopData);
+                    
+                    // Start real-time listener for this shop
+                    startShopRealTimeListener(shopId);
+                } else {
+                    console.log("❌ Shop not found:", shopId);
                 }
             } catch (error) {
                 console.error("❌ Error loading shop data for payment:", error);
             }
         }
 
-        // ==================== FIXED: updatePaymentSectionUI function with PROPER VALIDATION ====================
-        function updatePaymentSectionUI(shopData) {
-            console.log("🔥 updatePaymentSectionUI CALLED:", shopData);
-            
-            if (shopData) {
-                SHOP_CONFIG = shopData;
-                console.log("💾 SHOP_CONFIG saved:", SHOP_CONFIG);
-            }
-            
-            if (!shopData) {
-                console.log("❌ No shop data to update UI");
-                return;
-            }
-            
-            // Extract UPI ID
-            let upiId = "";
-            if (shopData.upiId) {
-                upiId = shopData.upiId;
-            } else if (shopData.upiSettings && shopData.upiSettings.upiId) {
-                upiId = shopData.upiSettings.upiId;
-            } else if (shopData.settings && shopData.settings.upiId) {
-                upiId = shopData.settings.upiId;
-            }
-            
-            // Extract QR URL
-            let qrUrl = "";
-            if (shopData.qrCodeImage && typeof shopData.qrCodeImage === 'string' && 
-                shopData.qrCodeImage.includes('cloudinary.com')) {
-                qrUrl = shopData.qrCodeImage;
-            } else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
-                     typeof shopData.upiSettings.qrCodeImage === 'string' &&
-                     shopData.upiSettings.qrCodeImage.includes('cloudinary.com')) {
-                qrUrl = shopData.upiSettings.qrCodeImage;
-            } else if (shopData.settings && shopData.settings.qrCodeImage &&
-                     typeof shopData.settings.qrCodeImage === 'string' &&
-                     shopData.settings.qrCodeImage.includes('cloudinary.com')) {
-                qrUrl = shopData.settings.qrCodeImage;
-            } else if (upiId) {
-                qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}`;
-            } else if (shopData.qrImage) {
-                qrUrl = shopData.qrImage;
-            } else if (shopData.qrCode) {
-                qrUrl = shopData.qrCode;
-            }
-            
-            // Update UPI ID display
-            const upiElement = document.getElementById('displayUpiId');
-            const qrElement = document.getElementById('qrCodeImage');
-            
-            if (upiElement) {
-                if (upiId) {
-                    upiElement.textContent = upiId;
-                } else {
-                    upiElement.textContent = "UPI ID not configured";
-                    upiElement.style.color = "#999";
-                }
-            }
-            
-            if (qrElement) {
-                if (qrUrl) {
-                    const timestamp = Date.now();
-                    const separator = qrUrl.includes('?') ? '&' : '?';
-                    qrElement.src = qrUrl + separator + 't=' + timestamp;
-                    qrElement.alt = "Scan to pay via UPI";
-                    qrElement.style.display = 'block';
-                } else {
-                    qrElement.style.display = 'none';
-                }
-            }
-            
-            // ==================== FIXED: Check if payment methods are ENABLED/DISABLED ====================
-            const upiOption = document.getElementById('upiPaymentOption');
-            const codOption = document.getElementById('codPaymentOption');
-            
-            if (upiOption) {
-                // Check if UPI payment is enabled
-                let upiEnabled = true; // Default to enabled
-                
-                // Check shop configuration for payment methods
-                if (shopData.paymentMethods && shopData.paymentMethods.upi === false) {
-                    upiEnabled = false;
-                    console.log("❌ UPI payment disabled in paymentMethods");
-                }
-                
-                if (shopData.upiSettings && shopData.upiSettings.acceptedMethods && 
-                    shopData.upiSettings.acceptedMethods.upi === false) {
-                    upiEnabled = false;
-                    console.log("❌ UPI payment disabled in upiSettings");
-                }
-                
-                if (shopData.settings && shopData.settings.paymentMethods && 
-                    shopData.settings.paymentMethods.upi === false) {
-                    upiEnabled = false;
-                    console.log("❌ UPI payment disabled in settings");
-                }
-                
-                // Also check if UPI ID or QR code is available
-                if (!upiId && !qrUrl) {
-                    upiEnabled = false;
-                    console.log("❌ UPI payment disabled - no UPI ID or QR code");
-                }
-                
-                // Update UPI option UI
-                const upiRadio = upiOption.querySelector('input[type="radio"]');
-                
-                if (upiEnabled) {
-                    upiOption.style.display = 'flex';
-                    upiOption.style.opacity = '1';
-                    upiOption.style.cursor = 'pointer';
-                    upiOption.classList.remove('disabled');
-                    if (upiRadio) upiRadio.disabled = false;
-                    
-                    // Update the inner HTML properly
-                    upiOption.innerHTML = `
-                        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
-                        <div class="payment-info">
-                            <div class="payment-title">QR Code Payment</div>
-                            <div class="payment-desc">Scan QR code to pay instantly</div>
-                        </div>
-                        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;">
-                    `;
-                } else {
-                    upiOption.style.display = 'flex';
-                    upiOption.style.opacity = '0.5';
-                    upiOption.style.cursor = 'not-allowed';
-                    upiOption.classList.add('disabled');
-                    if (upiRadio) upiRadio.disabled = true;
-                    
-                    // Update the inner HTML to show disabled state
-                    upiOption.innerHTML = `
-                        <div class="payment-icon"><i class="fas fa-qrcode"></i></div>
-                        <div class="payment-info">
-                            <div class="payment-title" style="color: #999;">QR Code Payment</div>
-                            <div class="payment-desc" style="color: #FF6B6B;">This payment method is currently unavailable</div>
-                        </div>
-                        <input type="radio" id="paymentMethodUpi" name="paymentMethod" value="upi" style="margin-left: auto;" disabled>
-                    `;
-                    
-                    // If UPI was selected but is now disabled, switch to COD
-                    if (selectedPaymentMethod === 'qr') {
-                        const codRadio = document.getElementById('paymentMethodCod');
-                        if (codRadio && !codRadio.disabled) {
-                            codRadio.checked = true;
-                            selectedPaymentMethod = 'cod';
-                        }
-                    }
-                }
-            }
-            
-            if (codOption) {
-                // Check if COD payment is enabled
-                let codEnabled = true; // Default to enabled
-                
-                // Check shop configuration for payment methods
-                if (shopData.paymentMethods && shopData.paymentMethods.cash === false) {
-                    codEnabled = false;
-                    console.log("❌ COD payment disabled in paymentMethods");
-                }
-                
-                if (shopData.upiSettings && shopData.upiSettings.acceptedMethods && 
-                    shopData.upiSettings.acceptedMethods.cash === false) {
-                    codEnabled = false;
-                    console.log("❌ COD payment disabled in upiSettings");
-                }
-                
-                if (shopData.settings && shopData.settings.paymentMethods && 
-                    shopData.settings.paymentMethods.cash === false) {
-                    codEnabled = false;
-                    console.log("❌ COD payment disabled in settings");
-                }
-                
-                // Update COD option UI
-                const codRadio = codOption.querySelector('input[type="radio"]');
-                
-                if (codEnabled) {
-                    codOption.style.display = 'flex';
-                    codOption.style.opacity = '1';
-                    codOption.style.cursor = 'pointer';
-                    codOption.classList.remove('disabled');
-                    if (codRadio) codRadio.disabled = false;
-                    
-                    // Update the inner HTML properly
-                    codOption.innerHTML = `
-                        <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
-                        <div class="payment-info">
-                            <div class="payment-title">Cash on Delivery</div>
-                            <div class="payment-desc">Pay when you receive your order</div>
-                        </div>
-                        <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;">
-                    `;
-                } else {
-                    codOption.style.display = 'flex';
-                    codOption.style.opacity = '0.5';
-                    codOption.style.cursor = 'not-allowed';
-                    codOption.classList.add('disabled');
-                    if (codRadio) codRadio.disabled = true;
-                    
-                    // Update the inner HTML to show disabled state
-                    codOption.innerHTML = `
-                        <div class="payment-icon"><i class="fas fa-money-bill-wave"></i></div>
-                        <div class="payment-info">
-                            <div class="payment-title" style="color: #999;">Cash on Delivery</div>
-                            <div class="payment-desc" style="color: #FF6B6B;">This payment method is currently unavailable</div>
-                        </div>
-                        <input type="radio" id="paymentMethodCod" name="paymentMethod" value="cod" style="margin-left: auto;" disabled>
-                    `;
-                    
-                    // If COD was selected but is now disabled, switch to UPI if available
-                    if (selectedPaymentMethod === 'cod') {
-                        const upiRadio = document.getElementById('paymentMethodUpi');
-                        if (upiRadio && !upiRadio.disabled) {
-                            upiRadio.checked = true;
-                            selectedPaymentMethod = 'qr';
-                        }
-                    }
-                }
-            }
-            
-            // Enable/disable place order button based on available payment methods
-            const placeOrderBtn = document.getElementById('placeOrderBtn');
-            if (placeOrderBtn) {
-                const hasEnabledPaymentMethod = 
-                    (document.getElementById('paymentMethodUpi') && !document.getElementById('paymentMethodUpi').disabled) ||
-                    (document.getElementById('paymentMethodCod') && !document.getElementById('paymentMethodCod').disabled);
-                
-                placeOrderBtn.disabled = cart.length === 0 || !hasEnabledPaymentMethod;
-            }
-            
-            console.log("✅ updatePaymentSectionUI completed");
-        }
-
+        // Load shop data
         async function loadShopData() {
             try {
                 let shopId = 'default_shop';
@@ -4063,7 +4140,7 @@
                         console.log('💾 SHOP_CONFIG updated from SHOP_DATA');
                     }
                     
-                    updateCouponSection();
+                    updateCouponSectionFromShopData(SHOP_DATA);
                 }
             } catch (error) {
                 console.error('Error loading shop data:', error);
@@ -5767,58 +5844,23 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
             quantityElement.textContent = quantity;
         }
 
-        // Coupon functions
+        // ==================== FIXED: Coupon functions with real-time updates ====================
         function updateCouponSection() {
-            const couponSection = document.querySelector('.coupon-section');
-            const applyCouponBtn = document.getElementById('applyCouponBtn');
-            
-            if (!SHOP_DATA) {
-                if (applyCouponBtn) {
-                    applyCouponBtn.disabled = true;
-                }
-                return;
-            }
-            
-            const couponsEnabled = SHOP_DATA.couponEnabled || false;
-            
-            if (!couponsEnabled) {
-                if (couponSection) {
-                    couponSection.innerHTML = `
-                        <div class="text-center text-muted p-3">
-                            <i class="fas fa-tag" style="font-size: 24px; margin-bottom: 10px;"></i>
-                            <p>Coupons are currently disabled by the shopkeeper</p>
-                        </div>
-                    `;
-                }
-                if (applyCouponBtn) {
-                    applyCouponBtn.disabled = true;
-                }
-                return;
-            }
-            
-            const hasCoupons = SHOP_DATA.couponCode || SHOP_DATA.couponSettings;
-            
-            if (hasCoupons) {
-                if (applyCouponBtn) {
-                    applyCouponBtn.disabled = !currentUser;
-                }
-            } else {
-                if (couponSection) {
-                    couponSection.innerHTML = `
-                        <div class="text-center text-muted p-3">
-                            <i class="fas fa-tag" style="font-size: 24px; margin-bottom: 10px;"></i>
-                            <p>No coupons available at the moment</p>
-                        </div>
-                    `;
-                }
-                if (applyCouponBtn) {
-                    applyCouponBtn.disabled = true;
-                }
-            }
+            // This function is now handled by updateCouponSectionFromShopData
         }
 
         function applyCoupon() {
-            if (!SHOP_DATA || !SHOP_DATA.couponEnabled) {
+            console.log("🎫 Applying coupon...");
+            
+            if (!SHOP_DATA) {
+                showToast('Shop data not loaded yet', 'warning');
+                return;
+            }
+            
+            // Check if coupons are enabled in shop settings
+            const couponsEnabled = SHOP_DATA.couponEnabled !== false; // Default to true if not specified
+            
+            if (!couponsEnabled) {
                 showToast('Coupons are currently disabled by the shopkeeper', 'warning');
                 return;
             }
@@ -5843,6 +5885,7 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
             const shopCouponCode = SHOP_DATA.couponCode;
             const shopCouponSettings = SHOP_DATA.couponSettings;
             
+            // Check shop coupon first
             if (shopCouponCode && shopCouponCode.toUpperCase() === couponCode) {
                 if (shopCouponSettings) {
                     coupon = {
@@ -5857,6 +5900,7 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
                 }
             }
             
+            // If not shop coupon, check available coupons
             if (!coupon) {
                 coupon = AVAILABLE_COUPONS.find(c => c.code === couponCode);
             }
@@ -6328,7 +6372,7 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
             }
         }
 
-        // ==================== FIXED: Send order notification ====================
+        // ==================== FIXED: Send order notification to shopkeeper ====================
         async function sendOrderNotificationToShopkeeper(orderData) {
             try {
                 console.log("📤 Sending notification to shopkeeper for order:", orderData.orderId);
@@ -6569,6 +6613,109 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
             document.getElementById('avatarUpload').click();
         }
 
+        // ==================== NEW: Load and display QR code properly ====================
+        function loadAndDisplayQRCode(shopData) {
+            console.log("🔍 Loading QR code from shop data");
+            
+            const qrElement = document.getElementById('qrCodeImage');
+            if (!qrElement) {
+                console.error("❌ QR code element not found");
+                return;
+            }
+            
+            let qrUrl = "";
+            
+            // Try different possible locations for QR code image
+            if (shopData.qrCodeImage && typeof shopData.qrCodeImage === 'string') {
+                qrUrl = shopData.qrCodeImage;
+                console.log("✅ Found QR code in qrCodeImage");
+            } 
+            else if (shopData.upiSettings && shopData.upiSettings.qrCodeImage && 
+                     typeof shopData.upiSettings.qrCodeImage === 'string') {
+                qrUrl = shopData.upiSettings.qrCodeImage;
+                console.log("✅ Found QR code in upiSettings.qrCodeImage");
+            } 
+            else if (shopData.settings && shopData.settings.qrCodeImage &&
+                     typeof shopData.settings.qrCodeImage === 'string') {
+                qrUrl = shopData.settings.qrCodeImage;
+                console.log("✅ Found QR code in settings.qrCodeImage");
+            } 
+            else if (shopData.qrImage && typeof shopData.qrImage === 'string') {
+                qrUrl = shopData.qrImage;
+                console.log("✅ Found QR code in qrImage");
+            } 
+            else if (shopData.qrCode && typeof shopData.qrCode === 'string') {
+                qrUrl = shopData.qrCode;
+                console.log("✅ Found QR code in qrCode");
+            }
+            
+            // If still no QR URL, generate from UPI ID
+            if (!qrUrl) {
+                const upiId = shopData.upiId || 
+                             (shopData.upiSettings && shopData.upiSettings.upiId) || 
+                             (shopData.settings && shopData.settings.upiId);
+                
+                if (upiId) {
+                    qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiId)}&format=png`;
+                    console.log("🔗 Generated QR code from UPI ID");
+                } else {
+                    console.log("❌ No QR code or UPI ID found");
+                    qrElement.style.display = 'none';
+                    return;
+                }
+            }
+            
+            console.log("🖼️ QR URL:", qrUrl);
+            
+            // Set the image source with error handling
+            qrElement.onload = function() {
+                console.log("✅ QR code loaded successfully");
+                qrElement.style.display = 'block';
+            };
+            
+            qrElement.onerror = function() {
+                console.error("❌ Failed to load QR code image");
+                
+                // Try with timestamp to prevent caching issues
+                const timestamp = Date.now();
+                const separator = qrUrl.includes('?') ? '&' : '?';
+                qrElement.src = qrUrl + separator + 't=' + timestamp;
+                
+                // If still fails, show placeholder
+                setTimeout(() => {
+                    if (!qrElement.complete || qrElement.naturalHeight === 0) {
+                        console.log("🔄 Loading fallback QR code");
+                        qrElement.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=shop@upi&pn=Shop&am=0&cu=INR';
+                        qrElement.alt = "QR Code Placeholder";
+                    }
+                }, 1000);
+            };
+            
+            // Add timestamp to prevent caching
+            const timestamp = Date.now();
+            const separator = qrUrl.includes('?') ? '&' : '?';
+            qrElement.src = qrUrl + separator + 't=' + timestamp;
+            qrElement.alt = "Scan to pay via UPI";
+            qrElement.style.display = 'block';
+        }
+
+        // ==================== NEW: Fix Firebase Storage URLs ====================
+        function fixFirebaseUrl(url) {
+            if (!url || typeof url !== 'string') return url;
+            
+            let fixedUrl = url;
+            
+            // Fix Firebase Storage URLs
+            if (fixedUrl.includes('firebasestorage.googleapis.com')) {
+                if (!fixedUrl.includes('?alt=media')) {
+                    const separator = fixedUrl.includes('?') ? '&' : '?';
+                    fixedUrl += separator + 'alt=media';
+                }
+            }
+            
+            return fixedUrl;
+        }
+
         // Start app when DOM is loaded
         document.addEventListener('DOMContentLoaded', function() {
             initApp();
@@ -6625,4 +6772,3 @@ Placed on: ${new Date(order.date).toLocaleDateString()}
     </script>
 </body>
 </html>
-    
